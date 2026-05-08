@@ -1,217 +1,613 @@
---========================================================--
--- X-CLIENT: PLATON.SU FINAL EDITION (STABLE & BYPASSED)
---========================================================--
+--[[
+	╔══════════════════════════════════════════════════════════════╗
+	║                    XCLIENT v4.1                              ║
+	║    COMPATIBLE WITH: DELTA | XENO | FLUXUS | CODEX           ║
+	║    3 GUI STYLES: CS | PANEL | PLATON                        ║
+	╚══════════════════════════════════════════════════════════════╝
+	
+	USAGE: loadstring(game:HttpGet("YOUR_RAW_LINK"))()
+--]]
 
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local CoreGui = game:GetService("CoreGui")
-local Camera = workspace.CurrentCamera
+-- ═══════════════════════════════════════════════════════════════
+-- EXECUTOR COMPATIBILITY LAYER
+-- ═══════════════════════════════════════════════════════════════
 
-local player = Players.LocalPlayer
-local Config = {
-    Accent = Color3.fromRGB(160, 210, 255),
-    Bg = Color3.fromRGB(20, 20, 25),
-    Sidebar = Color3.fromRGB(15, 15, 18),
-    Icon = "rbxassetid://1000056272", -- Твой загруженный логотип
-    Speed = 35
+-- Безопасное получение глобального окружения (совместимость с Delta/Xeno/Fluxus/Codex)
+local env = getgenv and getgenv() or _G
+
+-- Защита от повторного запуска
+if env.XClientLoaded then
+	warn("[XCLIENT] Script already running! Restart game to reload.")
+	return
+end
+env.XClientLoaded = true
+
+-- Совместимость task библиотеки
+local taskLib = task or {
+	wait = function(t) return wait(t or 0) end,
+	spawn = function(f) return coroutine.wrap(f)() end,
+	delay = function(t, f) delay(t, f) end
 }
 
-local State = { Fly = false, Dodge = false, Open = true }
-
--- УБИВАЕМ СТАРЫЕ КОПИИ
-if _G.XClient_Running then _G.XClient_Running:Destroy() end
-local Root = Instance.new("Folder", CoreGui)
-Root.Name = "XClient_Root"
-_G.XClient_Running = Root
-
---========================================================--
--- СИСТЕМА УВЕДОМЛЕНИЙ (NOTIFICATIONS)
---========================================================--
-local NotifGui = Instance.new("ScreenGui", Root)
-local NotifFrame = Instance.new("Frame", NotifGui)
-NotifFrame.Size = UDim2.new(0, 250, 1, 0)
-NotifFrame.Position = UDim2.new(1, -260, 0, 0)
-NotifFrame.BackgroundTransparency = 1
-
-local NotifLayout = Instance.new("UIListLayout", NotifFrame)
-NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-NotifLayout.Padding = UDim.new(0, 10)
-
-local function Notify(title, text)
-    local n = Instance.new("Frame", NotifFrame)
-    n.Size = UDim2.new(0, 240, 0, 65)
-    n.BackgroundColor3 = Config.Bg
-    Instance.new("UICorner", n)
-    Instance.new("UIStroke", n).Color = Config.Accent
-    
-    local tl = Instance.new("TextLabel", n)
-    tl.Text = "  " .. title; tl.Size = UDim2.new(1,0,0,30); tl.Font = Enum.Font.GothamBold; tl.TextColor3 = Config.Accent; tl.TextSize = 14; tl.BackgroundTransparency = 1; tl.TextXAlignment = "Left"
-    
-    local tx = Instance.new("TextLabel", n)
-    tx.Text = "  " .. text; tx.Position = UDim2.new(0,0,0.4,0); tx.Size = UDim2.new(1,0,0,30); tx.Font = Enum.Font.Gotham; tx.TextColor3 = Color3.new(1,1,1); tx.TextSize = 12; tx.BackgroundTransparency = 1; tx.TextXAlignment = "Left"
-    
-    task.delay(4, function() 
-        TweenService:Create(n, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(tl, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
-        TweenService:Create(tx, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
-        task.wait(0.5)
-        n:Destroy() 
-    end)
+-- Безопасный вызов функций
+local function safeCall(func, ...)
+	local success, result = pcall(func, ...)
+	if not success then
+		warn("[XCLIENT] Error: " .. tostring(result))
+	end
+	return success, result
 end
 
---========================================================--
--- ЛОАДЕР (ЗАГРУЗКА)
---========================================================--
-local Screen = Instance.new("ScreenGui", Root)
-local Loader = Instance.new("Frame", Screen)
-Loader.Size = UDim2.new(1,0,1,0)
-Loader.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-Loader.ZIndex = 1000
+-- ═══════════════════════════════════════════════════════════════
+-- СЕРВИСЫ (безопасное получение)
+-- ═══════════════════════════════════════════════════════════════
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
-local LMain = Instance.new("Frame", Loader)
-LMain.Size = UDim2.new(0, 300, 0, 300)
-LMain.Position = UDim2.new(0.5, -150, 0.5, -150)
-LMain.BackgroundTransparency = 1
+-- ═══════════════════════════════════════════════════════════════
+-- ИГРОК И ПЕРСОНАЖ
+-- ═══════════════════════════════════════════════════════════════
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid", 10)
+local rootPart = character:WaitForChild("HumanoidRootPart", 10)
 
-local LIcon = Instance.new("ImageLabel", LMain)
-LIcon.Size = UDim2.new(0, 90, 0, 90)
-LIcon.Position = UDim2.new(0.5, -45, 0.15, 0)
-LIcon.Image = Config.Icon; LIcon.ImageColor3 = Config.Accent; LIcon.BackgroundTransparency = 1
-
-local LBarBg = Instance.new("Frame", LMain)
-LBarBg.Size = UDim2.new(0, 220, 0, 4); LBarBg.Position = UDim2.new(0.5, -110, 0.6, 0); LBarBg.BackgroundColor3 = Color3.fromRGB(30, 30, 35); Instance.new("UICorner", LBarBg)
-
-local LBar = Instance.new("Frame", LBarBg); LBar.Size = UDim2.new(0, 0, 1, 0); LBar.BackgroundColor3 = Config.Accent; Instance.new("UICorner", LBar)
-
-local LText = Instance.new("TextLabel", LMain)
-LText.Position = UDim2.new(0,0,0.68,0); LText.Size = UDim2.new(1,0,0,20); LText.Font = Enum.Font.GothamBold; LText.TextColor3 = Color3.new(1,1,1); LText.Text = "0%"; LText.BackgroundTransparency = 1
-
---========================================================--
--- ГЛАВНОЕ МЕНЮ (CSGUI REPLICA)
---========================================================--
-local Main = Instance.new("Frame", Screen)
-Main.Size = UDim2.new(0, 750, 0, 480)
-Main.Position = UDim2.new(0.5, -375, 0.5, -240)
-Main.BackgroundColor3 = Config.Bg
-Main.Visible = false
-Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 15)
-
--- Sidebar
-local Side = Instance.new("Frame", Main)
-Side.Size = UDim2.new(0, 200, 1, 0); Side.BackgroundColor3 = Config.Sidebar; Instance.new("UICorner", Side)
-
-local LogoP = Instance.new("TextLabel", Side)
-LogoP.Text = "P"; LogoP.Position = UDim2.new(0, 20, 0, 20); LogoP.Font = Enum.Font.GothamBold; LogoP.TextSize = 45; LogoP.TextColor3 = Config.Accent; LogoP.BackgroundTransparency = 1
-
-local LogoTitle = Instance.new("TextLabel", Side)
-LogoTitle.Text = "Platon.su"; LogoTitle.Position = UDim2.new(0, 65, 0, 35); LogoTitle.Font = Enum.Font.GothamBold; LogoTitle.TextSize = 18; LogoTitle.TextColor3 = Color3.new(1,1,1); LogoTitle.BackgroundTransparency = 1
-
--- Content
-local Holder = Instance.new("ScrollingFrame", Main)
-Holder.Size = UDim2.new(1, -220, 1, -40); Holder.Position = UDim2.new(0, 210, 0, 20); Holder.BackgroundTransparency = 1; Holder.ScrollBarThickness = 0
-Instance.new("UIListLayout", Holder).Padding = UDim.new(0, 10)
-
-local function AddModule(name, callback)
-    local b = Instance.new("TextButton", Holder)
-    b.Size = UDim2.new(1, -10, 0, 50); b.BackgroundColor3 = Config.Sidebar; b.Text = "  " .. name; b.Font = Enum.Font.GothamBold; b.TextColor3 = Color3.new(1,1,1); b.TextSize = 14; b.TextXAlignment = "Left"; Instance.new("UICorner", b)
-    
-    local ch = Instance.new("Frame", b); ch.Size = UDim2.new(0, 12, 0, 12); ch.Position = UDim2.new(1, -30, 0.5, -6); ch.BackgroundColor3 = Color3.fromRGB(200, 50, 50); Instance.new("UICorner", ch)
-
-    b.MouseButton1Click:Connect(function()
-        local s = callback()
-        TweenService:Create(ch, TweenInfo.new(0.3), {BackgroundColor3 = s and Color3.fromRGB(50, 255, 100) or Color3.fromRGB(200, 50, 50)}):Play()
-        Notify("X-CLIENT", name .. (s and " Enabled" or " Disabled"))
-    end)
+if not humanoid or not rootPart then
+	warn("[XCLIENT] Failed to load character components!")
+	env.XClientLoaded = false
+	return
 end
 
---========================================================--
--- MAGIC FLY + BYPASSES (50+ LINES)
---========================================================--
-local function GetBypassedVelocity(vel)
-    local jitter = Vector3.new(math.random(-5,5)/100, math.sin(tick()*10)*0.2, math.random(-5,5)/100)
-    return vel + jitter
+-- ═══════════════════════════════════════════════════════════════
+-- ГЛОБАЛЬНЫЕ НАСТРОЙКИ (через getgenv для совместимости)
+-- ═══════════════════════════════════════════════════════════════
+env.FlightSpeed = env.FlightSpeed or 16
+env.XClientGuiStyle = env.XClientGuiStyle or "platon"
+
+-- ═══════════════════════════════════════════════════════════════
+-- ЛОКАЛЬНЫЕ ПЕРЕМЕННЫЕ
+-- ═══════════════════════════════════════════════════════════════
+local isFlying = false
+local isMenuOpen = false
+local isMagicResolverEnabled = false
+local currentTab = "mov"
+local currentGuiStyle = env.XClientGuiStyle
+local verticalVelocity = 0
+local hoverTime = 0
+local flightConnection = nil
+local bodyGyro = nil
+
+-- Настройки полета
+local HOVER_AMPLITUDE = 0.12
+local HOVER_FREQUENCY = 2.2
+local LERP_SPEED = 0.18
+local VERTICAL_SPEED = 0.85
+local TILT_AMOUNT = 0.15
+local ACCELERATION = 0.08
+local DECELERATION = 0.05
+
+-- Magic Resolver
+local RESOLVER_DETECT_RADIUS = 12
+local RESOLVER_SAFE_RADIUS = 10
+local RESOLVER_LIFT_HEIGHT = 8
+local RESOLVER_SPEED_BOOST = 1.4
+local resolverTargetHeight = 0
+local resolverCurrentBoost = 1
+
+-- Рандомизация
+local nextRandomTime = 0
+local randomOffset = 0
+local targetRandomOffset = 0
+local microDropTimer = 0
+local microDropOffset = 0
+
+-- Улучшенный полет
+local currentSpeed = 0
+local targetSpeed = 0
+local tiltAngle = 0
+local targetTiltAngle = 0
+local breathePhase = 0
+local windEffect = 0
+
+-- ═══════════════════════════════════════════════════════════════
+-- ЦВЕТОВЫЕ СХЕМЫ
+-- ═══════════════════════════════════════════════════════════════
+local COLORS_CS = {
+	background = Color3.fromRGB(18, 18, 22),
+	backgroundLight = Color3.fromRGB(28, 28, 35),
+	backgroundDark = Color3.fromRGB(12, 12, 16),
+	accent = Color3.fromRGB(255, 165, 0),
+	accentGreen = Color3.fromRGB(76, 175, 80),
+	accentRed = Color3.fromRGB(244, 67, 54),
+	accentBlue = Color3.fromRGB(66, 165, 245),
+	textPrimary = Color3.fromRGB(255, 255, 255),
+	textSecondary = Color3.fromRGB(140, 140, 150),
+	textMuted = Color3.fromRGB(80, 80, 90),
+	border = Color3.fromRGB(45, 45, 55),
+	tabInactive = Color3.fromRGB(35, 35, 42),
+	toggleOff = Color3.fromRGB(50, 50, 60),
+	toggleOn = Color3.fromRGB(255, 165, 0)
+}
+
+local COLORS_PANEL = {
+	background = Color3.fromRGB(25, 25, 35),
+	backgroundLight = Color3.fromRGB(35, 35, 50),
+	backgroundDark = Color3.fromRGB(15, 15, 22),
+	accent = Color3.fromRGB(180, 130, 255),
+	accentGreen = Color3.fromRGB(100, 200, 120),
+	accentRed = Color3.fromRGB(255, 100, 100),
+	accentBlue = Color3.fromRGB(100, 180, 255),
+	textPrimary = Color3.fromRGB(255, 255, 255),
+	textSecondary = Color3.fromRGB(180, 180, 190),
+	textMuted = Color3.fromRGB(100, 100, 120),
+	border = Color3.fromRGB(60, 60, 80),
+	tabInactive = Color3.fromRGB(40, 40, 55),
+	toggleOff = Color3.fromRGB(60, 60, 70),
+	toggleOn = Color3.fromRGB(180, 130, 255)
+}
+
+local COLORS_PLATON = {
+	background = Color3.fromRGB(74, 74, 74),
+	backgroundLight = Color3.fromRGB(90, 90, 95),
+	backgroundDark = Color3.fromRGB(55, 55, 60),
+	accent = Color3.fromRGB(120, 180, 255),
+	accentGreen = Color3.fromRGB(100, 220, 130),
+	accentRed = Color3.fromRGB(255, 120, 120),
+	accentBlue = Color3.fromRGB(120, 180, 255),
+	textPrimary = Color3.fromRGB(255, 255, 255),
+	textSecondary = Color3.fromRGB(200, 200, 210),
+	textMuted = Color3.fromRGB(150, 150, 160),
+	border = Color3.fromRGB(120, 120, 130),
+	tabInactive = Color3.fromRGB(70, 70, 75),
+	toggleOff = Color3.fromRGB(80, 80, 90),
+	toggleOn = Color3.fromRGB(120, 180, 255)
+}
+
+local COLORS = COLORS_PLATON
+
+local function setColorScheme(style)
+	if style == "cs" then
+		COLORS = COLORS_CS
+	elseif style == "panel" then
+		COLORS = COLORS_PANEL
+	else
+		COLORS = COLORS_PLATON
+	end
+	currentGuiStyle = style
+	env.XClientGuiStyle = style
 end
 
-RunService.RenderStepped:Connect(function()
-    if State.Fly then
-        local c = player.Character; local hrp = c and c:FindFirstChild("HumanoidRootPart"); local hum = c and c:FindFirstChild("Humanoid")
-        if hrp and hum then
-            hum:ChangeState(11) -- Anti-Fall State
-            local look = Camera.CFrame.LookVector
-            local target = Vector3.new(0,0.1,0)
-            
-            if hum.MoveDirection.Magnitude > 0 then
-                target = look * Config.Speed
-            end
-            
-            hrp.Velocity = GetBypassedVelocity(target)
-            hrp.RotVelocity = Vector3.new(0,0,0)
-            
-            -- Anti-Cheat Spoof
-            if not hrp:FindFirstChild("X_Force") then
-                local bv = Instance.new("BodyVelocity", hrp)
-                bv.Name = "X_Force"; bv.MaxForce = Vector3.new(1e6, 1e6, 1e6); bv.Velocity = Vector3.new(0,0,0)
-            else
-                hrp.X_Force.Velocity = hrp.Velocity
-            end
-        end
-    else
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart:FindFirstChild("X_Force") then
-            player.Character.HumanoidRootPart.X_Force:Destroy()
-        end
-    end
-end)
+-- ═══════════════════════════════════════════════════════════════
+-- GUI PARENT (попытка использовать CoreGui, иначе PlayerGui)
+-- ═══════════════════════════════════════════════════════════════
+local guiParent
 
---========================================================--
--- ИНИЦИАЛИЗАЦИЯ
---========================================================--
-AddModule("Magic Fly (Camera)", function() State.Fly = not State.Fly return State.Fly end)
-AddModule("Smart Dodge", function() State.Dodge = not State.Dodge return State.Dodge end)
-
--- Floating Button
-local Float = Instance.new("ImageButton", Root)
-Float.Size = UDim2.new(0, 55, 0, 55); Float.Position = UDim2.new(0, 20, 0.2, 0); Float.BackgroundColor3 = Config.Bg; Float.Image = Config.Icon; Float.ImageColor3 = Config.Accent; Float.Visible = false; Instance.new("UICorner", Float)
-Instance.new("UIStroke", Float).Color = Config.Accent
-
-Float.MouseButton1Click:Connect(function() Main.Visible = not Main.Visible end)
-
--- Start Sequence
-task.spawn(function()
-    for i = 1, 100 do
-        LBar.Size = UDim2.new(i/100, 0, 1, 0)
-        LText.Text = i .. "%"
-        task.wait(0.015)
-    end
-    TweenService:Create(Loader, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(LMain, TweenInfo.new(0.5), {GroupTransparency = 1}):Play()
-    task.wait(0.6)
-    Loader:Destroy()
-    Main.Visible = true
-    Float.Visible = true
-    Notify("SYSTEM", "X-Client Loaded Successfully!")
-end)
-
--- Draggable
-local function Draggable(f)
-    local d, i, s, sp
-    f.InputBegan:Connect(function(inp)
-        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-            d = true; s = inp.Position; sp = f.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(inp)
-        if d and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
-            local del = inp.Position - s
-            f.Position = UDim2.new(sp.X.Scale, sp.X.Offset + del.X, sp.Y.Scale, sp.Y.Offset + del.Y)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function(inp) if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then d = false end end)
+local function getGuiParent()
+	-- Попытка использовать CoreGui (защищает GUI от сброса при смерти)
+	local success, err = pcall(function()
+		local test = Instance.new("ScreenGui")
+		test.Parent = CoreGui
+		test:Destroy()
+	end)
+	
+	if success then
+		return CoreGui
+	else
+		-- Fallback на PlayerGui
+		return player:WaitForChild("PlayerGui")
+	end
 end
 
-Draggable(Main); Draggable(Float)
- Loader:Destroy()
-        Float.Visible = true
-    end)
-end)
+guiParent = getGuiParent()
+
+-- Удаляем существующий GUI
+local existingGui = guiParent:FindFirstChild("XClientGui")
+if existingGui then
+	existingGui:Destroy()
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- СОЗДАНИЕ GUI
+-- ═══════════════════════════════════════════════════════════════
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "XClientGui"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.DisplayOrder = 999
+screenGui.IgnoreGuiInset = true
+screenGui.Parent = guiParent
+
+-- ═══════════════════════════════════════════════════════════════
+-- ЭКРАН ЗАГРУЗКИ
+-- ═══════════════════════════════════════════════════════════════
+local loadingScreen = Instance.new("Frame")
+loadingScreen.Name = "LoadingScreen"
+loadingScreen.Size = UDim2.new(1, 0, 1, 0)
+loadingScreen.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+loadingScreen.BorderSizePixel = 0
+loadingScreen.ZIndex = 100
+loadingScreen.Parent = screenGui
+
+local loadingLogo = Instance.new("TextLabel")
+loadingLogo.Size = UDim2.new(0, 300, 0, 80)
+loadingLogo.Position = UDim2.new(0.5, 0, 0.5, -40)
+loadingLogo.AnchorPoint = Vector2.new(0.5, 0.5)
+loadingLogo.BackgroundTransparency = 1
+loadingLogo.Text = "xclient"
+loadingLogo.TextColor3 = Color3.fromRGB(255, 255, 255)
+loadingLogo.TextSize = 52
+loadingLogo.Font = Enum.Font.GothamBold
+loadingLogo.TextTransparency = 1
+loadingLogo.Parent = loadingScreen
+
+local loadingVersion = Instance.new("TextLabel")
+loadingVersion.Size = UDim2.new(0, 250, 0, 25)
+loadingVersion.Position = UDim2.new(0.5, 0, 0.5, 30)
+loadingVersion.AnchorPoint = Vector2.new(0.5, 0.5)
+loadingVersion.BackgroundTransparency = 1
+loadingVersion.Text = "v4.1 | Delta/Xeno/Fluxus/Codex"
+loadingVersion.TextColor3 = COLORS.accent
+loadingVersion.TextSize = 14
+loadingVersion.Font = Enum.Font.Gotham
+loadingVersion.TextTransparency = 1
+loadingVersion.Parent = loadingScreen
+
+local loadingBarBg = Instance.new("Frame")
+loadingBarBg.Size = UDim2.new(0, 250, 0, 3)
+loadingBarBg.Position = UDim2.new(0.5, 0, 0.5, 70)
+loadingBarBg.AnchorPoint = Vector2.new(0.5, 0.5)
+loadingBarBg.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+loadingBarBg.BorderSizePixel = 0
+loadingBarBg.Parent = loadingScreen
+
+local loadingBar = Instance.new("Frame")
+loadingBar.Size = UDim2.new(0, 0, 1, 0)
+loadingBar.BackgroundColor3 = COLORS.accent
+loadingBar.BorderSizePixel = 0
+loadingBar.Parent = loadingBarBg
+
+local loadingBarCorner = Instance.new("UICorner")
+loadingBarCorner.CornerRadius = UDim.new(0, 2)
+loadingBarCorner.Parent = loadingBar
+
+-- ═══════════════════════════════════════════════════════════════
+-- КОНТЕЙНЕР УВЕДОМЛЕНИЙ
+-- ═══════════════════════════════════════════════════════════════
+local notificationContainer = Instance.new("Frame")
+notificationContainer.Name = "NotificationContainer"
+notificationContainer.Size = UDim2.new(0, 300, 1, -20)
+notificationContainer.Position = UDim2.new(1, -310, 0, 10)
+notificationContainer.BackgroundTransparency = 1
+notificationContainer.ZIndex = 50
+notificationContainer.Parent = screenGui
+
+local notificationLayout = Instance.new("UIListLayout")
+notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notificationLayout.Padding = UDim.new(0, 8)
+notificationLayout.Parent = notificationContainer
+
+-- ═══════════════════════════════════════════════════════════════
+-- ФУНКЦИЯ УВЕДОМЛЕНИЙ
+-- ═══════════════════════════════════════════════════════════════
+local notificationCount = 0
+local tweenInfoFast = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function showNotification(title, message, notifType)
+	notificationCount = notificationCount + 1
+	local currentOrder = notificationCount
+	
+	local accentColor = COLORS.accent
+	if notifType == "success" then
+		accentColor = COLORS.accentGreen
+	elseif notifType == "error" then
+		accentColor = COLORS.accentRed
+	elseif notifType == "info" then
+		accentColor = COLORS.accentBlue
+	end
+	
+	local notification = Instance.new("Frame")
+	notification.Name = "Notification_" .. currentOrder
+	notification.Size = UDim2.new(1, 0, 0, 60)
+	notification.BackgroundColor3 = COLORS.background
+	notification.BorderSizePixel = 0
+	notification.LayoutOrder = currentOrder
+	notification.BackgroundTransparency = 1
+	notification.ZIndex = 50
+	notification.Parent = notificationContainer
+	
+	local notifCorner = Instance.new("UICorner")
+	notifCorner.CornerRadius = UDim.new(0, 8)
+	notifCorner.Parent = notification
+	
+	local notifStroke = Instance.new("UIStroke")
+	notifStroke.Color = COLORS.border
+	notifStroke.Thickness = 1
+	notifStroke.Transparency = 0.5
+	notifStroke.Parent = notification
+	
+	local accentBar = Instance.new("Frame")
+	accentBar.Size = UDim2.new(0, 4, 1, -10)
+	accentBar.Position = UDim2.new(0, 5, 0, 5)
+	accentBar.BackgroundColor3 = accentColor
+	accentBar.BorderSizePixel = 0
+	accentBar.ZIndex = 51
+	accentBar.Parent = notification
+	
+	local accentCorner = Instance.new("UICorner")
+	accentCorner.CornerRadius = UDim.new(0, 2)
+	accentCorner.Parent = accentBar
+	
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Size = UDim2.new(1, -25, 0, 22)
+	titleLabel.Position = UDim2.new(0, 18, 0, 10)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = title
+	titleLabel.TextColor3 = COLORS.textPrimary
+	titleLabel.TextSize = 13
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.ZIndex = 51
+	titleLabel.Parent = notification
+	
+	local messageLabel = Instance.new("TextLabel")
+	messageLabel.Size = UDim2.new(1, -25, 0, 20)
+	messageLabel.Position = UDim2.new(0, 18, 0, 32)
+	messageLabel.BackgroundTransparency = 1
+	messageLabel.Text = message
+	messageLabel.TextColor3 = COLORS.textSecondary
+	messageLabel.TextSize = 11
+	messageLabel.Font = Enum.Font.Gotham
+	messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+	messageLabel.ZIndex = 51
+	messageLabel.Parent = notification
+	
+	notification.Position = UDim2.new(1, 50, 0, 0)
+	TweenService:Create(notification, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundTransparency = 0.1
+	}):Play()
+	
+	taskLib.delay(3.5, function()
+		if notification and notification.Parent then
+			TweenService:Create(notification, TweenInfo.new(0.3), {
+				Position = UDim2.new(1, 50, 0, 0),
+				BackgroundTransparency = 1
+			}):Play()
+			taskLib.delay(0.3, function()
+				if notification and notification.Parent then
+					notification:Destroy()
+				end
+			end)
+		end
+	end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- АНИМИРОВАННЫЙ ФОН
+-- ═══════════════════════════════════════════════════════════════
+local animatedBgFrame = Instance.new("Frame")
+animatedBgFrame.Name = "AnimatedBackground"
+animatedBgFrame.Size = UDim2.new(1, 0, 1, 0)
+animatedBgFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+animatedBgFrame.BackgroundTransparency = 1
+animatedBgFrame.Visible = false
+animatedBgFrame.ZIndex = 1
+animatedBgFrame.Parent = screenGui
+
+local glowSpots = {}
+for i = 1, 3 do
+	local spot = Instance.new("Frame")
+	spot.Size = UDim2.new(0, 200 + i * 50, 0, 200 + i * 50)
+	spot.Position = UDim2.new(0.2 * i, 0, 0.3 * i, 0)
+	spot.BackgroundColor3 = COLORS.accent
+	spot.BackgroundTransparency = 0.85
+	spot.BorderSizePixel = 0
+	spot.ZIndex = 1
+	spot.Parent = animatedBgFrame
+	
+	local spotCorner = Instance.new("UICorner")
+	spotCorner.CornerRadius = UDim.new(1, 0)
+	spotCorner.Parent = spot
+	
+	glowSpots[i] = spot
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- КНОПКА МЕНЮ
+-- ═══════════════════════════════════════════════════════════════
+local menuButton = Instance.new("TextButton")
+menuButton.Name = "XClientButton"
+menuButton.Size = UDim2.new(0, 55, 0, 55)
+menuButton.Position = UDim2.new(0, 15, 0, 15)
+menuButton.BackgroundColor3 = COLORS.background
+menuButton.BorderSizePixel = 0
+menuButton.Text = ""
+menuButton.AutoButtonColor = false
+menuButton.Visible = false
+menuButton.ZIndex = 10
+menuButton.Parent = screenGui
+
+local menuButtonCorner = Instance.new("UICorner")
+menuButtonCorner.CornerRadius = UDim.new(1, 0)
+menuButtonCorner.Parent = menuButton
+
+local menuButtonStroke = Instance.new("UIStroke")
+menuButtonStroke.Color = COLORS.border
+menuButtonStroke.Thickness = 2
+menuButtonStroke.Parent = menuButton
+
+local buttonText = Instance.new("TextLabel")
+buttonText.Size = UDim2.new(1, 0, 1, 0)
+buttonText.BackgroundTransparency = 1
+buttonText.Text = "X"
+buttonText.TextColor3 = Color3.fromRGB(173, 216, 255)
+buttonText.TextSize = 28
+buttonText.Font = Enum.Font.GothamBold
+buttonText.ZIndex = 11
+buttonText.Parent = menuButton
+
+-- ═══════════════════════════════════════════════════════════════
+-- ГЛАВНАЯ ПАНЕЛЬ
+-- ═══════════════════════════════════════════════════════════════
+local menuFrame = Instance.new("Frame")
+menuFrame.Name = "MenuFrame"
+menuFrame.Size = UDim2.new(0, 0, 0, 0)
+menuFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+menuFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+menuFrame.BackgroundColor3 = COLORS.background
+menuFrame.BorderSizePixel = 0
+menuFrame.BackgroundTransparency = 1
+menuFrame.ClipsDescendants = true
+menuFrame.Visible = false
+menuFrame.ZIndex = 5
+menuFrame.Parent = screenGui
+
+local menuFrameCorner = Instance.new("UICorner")
+menuFrameCorner.CornerRadius = UDim.new(0, 15)
+menuFrameCorner.Parent = menuFrame
+
+local menuFrameStroke = Instance.new("UIStroke")
+menuFrameStroke.Color = COLORS.border
+menuFrameStroke.Thickness = 1
+menuFrameStroke.Transparency = 1
+menuFrameStroke.Parent = menuFrame
+
+-- ═══════════════════════════════════════════════════════════════
+-- САЙДБАР
+-- ═══════════════════════════════════════════════════════════════
+local sidebar = Instance.new("Frame")
+sidebar.Name = "Sidebar"
+sidebar.Size = UDim2.new(0, 220, 1, 0)
+sidebar.BackgroundColor3 = COLORS.backgroundDark
+sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 6
+sidebar.Parent = menuFrame
+
+local sidebarCorner = Instance.new("UICorner")
+sidebarCorner.CornerRadius = UDim.new(0, 15)
+sidebarCorner.Parent = sidebar
+
+local sidebarFix = Instance.new("Frame")
+sidebarFix.Size = UDim2.new(0, 20, 1, 0)
+sidebarFix.Position = UDim2.new(1, -20, 0, 0)
+sidebarFix.BackgroundColor3 = COLORS.backgroundDark
+sidebarFix.BorderSizePixel = 0
+sidebarFix.ZIndex = 6
+sidebarFix.Parent = sidebar
+
+-- Логотип
+local logoContainer = Instance.new("Frame")
+logoContainer.Size = UDim2.new(1, 0, 0, 60)
+logoContainer.BackgroundTransparency = 1
+logoContainer.ZIndex = 7
+logoContainer.Parent = sidebar
+
+local logoX = Instance.new("TextLabel")
+logoX.Size = UDim2.new(0, 50, 0, 50)
+logoX.Position = UDim2.new(0, 15, 0.5, -25)
+logoX.BackgroundTransparency = 1
+logoX.Text = "X"
+logoX.TextColor3 = Color3.fromRGB(173, 216, 255)
+logoX.TextSize = 36
+logoX.Font = Enum.Font.GothamBold
+logoX.ZIndex = 8
+logoX.Parent = logoContainer
+
+local logoText = Instance.new("TextLabel")
+logoText.Size = UDim2.new(0, 120, 0, 25)
+logoText.Position = UDim2.new(0, 55, 0.5, -12)
+logoText.BackgroundTransparency = 1
+logoText.Text = "client"
+logoText.TextColor3 = COLORS.textPrimary
+logoText.TextSize = 20
+logoText.Font = Enum.Font.GothamBold
+logoText.TextXAlignment = Enum.TextXAlignment.Left
+logoText.ZIndex = 8
+logoText.Parent = logoContainer
+
+-- ═══════════════════════════════════════════════════════════════
+-- ВКЛАДКИ
+-- ═══════════════════════════════════════════════════════════════
+local tabsFrame = Instance.new("Frame")
+tabsFrame.Size = UDim2.new(1, -20, 0, 200)
+tabsFrame.Position = UDim2.new(0, 10, 0, 70)
+tabsFrame.BackgroundTransparency = 1
+tabsFrame.ZIndex = 7
+tabsFrame.Parent = sidebar
+
+local tabsLayout = Instance.new("UIListLayout")
+tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabsLayout.Padding = UDim.new(0, 8)
+tabsLayout.Parent = tabsFrame
+
+local tabs = {}
+local tabContents = {}
+
+local function createTab(name, displayName, layoutOrder, icon)
+	local tab = Instance.new("TextButton")
+	tab.Name = name .. "Tab"
+	tab.Size = UDim2.new(1, 0, 0, 45)
+	tab.BackgroundColor3 = COLORS.tabInactive
+	tab.BorderSizePixel = 0
+	tab.Text = ""
+	tab.LayoutOrder = layoutOrder
+	tab.AutoButtonColor = false
+	tab.ZIndex = 8
+	tab.Parent = tabsFrame
+	
+	local tabCorner = Instance.new("UICorner")
+	tabCorner.CornerRadius = UDim.new(0, 10)
+	tabCorner.Parent = tab
+	
+	local tabStroke = Instance.new("UIStroke")
+	tabStroke.Name = "Stroke"
+	tabStroke.Color = COLORS.border
+	tabStroke.Thickness = 1
+	tabStroke.Transparency = 0.5
+	tabStroke.Parent = tab
+	
+	local iconLabel = Instance.new("TextLabel")
+	iconLabel.Name = "Icon"
+	iconLabel.Size = UDim2.new(0, 25, 0, 25)
+	iconLabel.Position = UDim2.new(0, 12, 0.5, -12)
+	iconLabel.BackgroundTransparency = 1
+	iconLabel.Text = icon
+	iconLabel.TextColor3 = COLORS.textSecondary
+	iconLabel.TextSize = 16
+	iconLabel.Font = Enum.Font.GothamBold
+	iconLabel.ZIndex = 9
+	iconLabel.Parent = tab
+	
+	local textLabel = Instance.new("TextLabel")
+	textLabel.Name = "Text"
+	textLabel.Size = UDim2.new(1, -50, 1, 0)
+	textLabel.Position = UDim2.new(0, 45, 0, 0)
+	textLabel.BackgroundTransparency = 1
+	textLabel.Text = displayName
+	textLabel.TextColor3 = COLORS.textSecondary
+	textLabel.TextSize = 14
+	textLabel.Font = Enum.Font.GothamBold
+	textLabel.TextXAlignment = Enum.TextXAlignment.Left
+	textLabel.ZIndex = 9
+	textLabel.Parent = tab
+	
+	tabs[name] = {
+		button = tab,
+		icon = iconLabel,
+		text = textLabel,
+		stroke = tabStroke
+	}
+	
+	return tab
+end
+
+createTab("mov", "MOVEMENT", 1, "M")
+createTab("com", "COMBAT", 2, "C")
+createTab("visual", "VISUAL", 3, "V")
+createTab("gui", "GUI", 4, "G")
+
+-- ═══════════════════════════════════════════════════════════════
+-- ПАНЕЛЬ ПОЛЬЗОВАТЕЛ
