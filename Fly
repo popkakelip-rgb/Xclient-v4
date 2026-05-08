@@ -1,0 +1,461 @@
+--[[
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                  xclient — MAGIC FLIGHT                      ║
+    ║                  Версия 4.1 | Exploit Edition                ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  СОВМЕСТИМОСТЬ:                                              ║
+    ║  ✓ Delta Executor                                            ║
+    ║  ✓ Xeno Executor                                             ║
+    ║  ✓ Fluxus                                                    ║
+    ║  ✓ Codex                                                     ║
+    ║  ✓ Solara / Synapse X / KRNL и другие                        ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  ЗАПУСК: вставь скрипт в executor → Execute                  ║
+    ║  Повторный запуск безопасен (защита от дублей)               ║
+    ╚══════════════════════════════════════════════════════════════╝
+--]]
+
+-- ══════════════════════════════════════════════
+--  ОПРЕДЕЛЕНИЕ ОКРУЖЕНИЯ ЭКСПЛОЙТА
+--  Поддержка: Delta, Xeno, Fluxus, Codex,
+--             Solara, Synapse X, KRNL и др.
+-- ══════════════════════════════════════════════
+
+-- Универсальное глобальное хранилище.
+-- getgenv() есть в большинстве эксплойтов (Synapse, KRNL, Fluxus, Delta, Xeno, Codex).
+-- Если недоступно — падаем на _G (работает везде).
+local ENV = (typeof(getgenv) == "function" and getgenv()) or _G
+
+-- ══════════════════════════════════════════════
+--  ЗАЩИТА ОТ ДВОЙНОГО ЗАПУСКА
+-- ══════════════════════════════════════════════
+if ENV.xclientLoaded then
+    -- Скрипт уже запущен — просто перезапускаем GUI
+    -- (уничтожаем старый ScreenGui, продолжаем выполнение)
+    local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        local old = pg:FindFirstChild("xclient_v4")
+        if old then old:Destroy() end
+    end
+    -- Сбрасываем флаг чтобы пересоздать всё ниже
+end
+ENV.xclientLoaded = true
+
+-- ══════════════════════════════════════════════
+--  ОПРЕДЕЛЯЕМ РОДИТЕЛЯ ДЛЯ GUI
+--  Delta / Xeno / Codex / Fluxus умеют писать
+--  в CoreGui — используем его как приоритет,
+--  чтобы GUI не сбрасывался при respawn.
+--  Если CoreGui недоступен — используем PlayerGui.
+-- ══════════════════════════════════════════════
+local GuiParent
+do
+    local ok, coreGui = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    if ok and coreGui then
+        -- Проверяем, разрешает ли эксплойт запись в CoreGui
+        local canWrite = pcall(function()
+            local t = Instance.new("Frame")
+            t.Parent = coreGui
+            t:Destroy()
+        end)
+        GuiParent = canWrite and coreGui
+            or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    else
+        GuiParent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    end
+end
+
+-- ══════════════════════════════════════════════
+--  КОНФИГ
+-- ══════════════════════════════════════════════
+local Cfg = {
+    NormalSpeed          = 18,
+    VerticalSpeed        = 10,
+    ResolverBoostSpeed   = 21,
+    ResolverDetectRadius = 13,
+    ResolverSafeRadius   = 10,
+    ResolverRiseSpeed    = 15,
+    ResolverSinkSpeed    = 6,
+    ResolverVertLerp     = 0.08,
+    ResolverSpeedBoost   = 1.35,
+    LerpAlpha            = 0.20,
+    -- Покачивание
+    WobbleAmp   = 0.08,  WobbleFreq  = 1.6,
+    DriftAmp    = 0.06,  DriftMin    = 0.4,
+    DriftMax    = 1.1,   DriftLerp   = 0.04,
+    StepAmp     = 0.03,  StepFreq    = 4.2,   StepPow = 3.0,
+    -- Цвета CS-стиль
+    X_BLUE      = Color3.fromRGB(135, 206, 250),  -- цвет иконки X (как на картинке)
+    Accent      = Color3.fromRGB(0,   160, 255),
+    AccentRes   = Color3.fromRGB(255, 195, 65),
+    AccentGui   = Color3.fromRGB(160, 130, 255),
+    BG          = Color3.fromRGB(22,  22,  28),
+    BG2         = Color3.fromRGB(16,  16,  20),
+    BG3         = Color3.fromRGB(30,  30,  38),
+    BG4         = Color3.fromRGB(12,  12,  16),
+    Sidebar     = Color3.fromRGB(10,  10,  14),
+    Text        = Color3.fromRGB(210, 210, 220),
+    TextDim     = Color3.fromRGB(88,  88,  106),
+    TextMid     = Color3.fromRGB(140, 140, 155),
+    Border      = Color3.fromRGB(40,  40,  52),
+    BorderLight = Color3.fromRGB(60,  60,  78),
+    Black       = Color3.fromRGB(0,   0,   0),
+    White       = Color3.fromRGB(255, 255, 255),
+    NotifyBG    = Color3.fromRGB(12,  12,  16),
+    -- Цвета Panel-стиль (Minecraft-inspired)
+    P_BG        = Color3.fromRGB(20,  18,  28),
+    P_HEADER    = Color3.fromRGB(30,  26,  42),
+    P_ROW       = Color3.fromRGB(26,  22,  36),
+    P_ROW2      = Color3.fromRGB(22,  18,  30),
+    P_ACCENT    = Color3.fromRGB(100, 180, 255),
+    P_BORDER    = Color3.fromRGB(55,  45,  75),
+    P_TEXT      = Color3.fromRGB(220, 215, 235),
+    P_TEXTDIM   = Color3.fromRGB(110, 100, 135),
+}
+
+-- ══════════════════════════════════════════════
+--  СЕРВИСЫ
+-- ══════════════════════════════════════════════
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace        = game:GetService("Workspace")
+
+-- ══════════════════════════════════════════════
+--  ОБЪЕКТЫ СЦЕНЫ
+-- ══════════════════════════════════════════════
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+local Camera      = Workspace.CurrentCamera
+local Character   = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid    = Character:WaitForChild("Humanoid")
+local RootPart    = Character:WaitForChild("HumanoidRootPart")
+
+-- ══════════════════════════════════════════════
+--  СОСТОЯНИЕ
+-- ══════════════════════════════════════════════
+local Flying          = false
+local heartConn       = nil
+local ResolverOn      = false
+local resolverActive  = false
+local resolverVertVel = 0
+local guiStyle        = "cs"   -- "cs" | "panel"
+local menuOpen        = false
+local wobbleT=0; local stepT=0
+local driftCur=0; local driftTgt=0; local driftTmr=0; local driftIval=0.7
+
+-- ══════════════════════════════════════════════
+--  ЗАЩИТА ОТ ДУБЛИРОВАНИЯ GUI
+-- ══════════════════════════════════════════════
+local GUI_TAG = "xclient_v4"
+if PlayerGui:FindFirstChild(GUI_TAG) then PlayerGui[GUI_TAG]:Destroy() end
+
+-- ══════════════════════════════════════════════
+--  ROOT SCREENGUI
+-- ══════════════════════════════════════════════
+local ScreenGui          = Instance.new("ScreenGui")
+ScreenGui.Name           = GUI_TAG
+ScreenGui.ResetOnSpawn   = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent         = PlayerGui
+
+-- ══════════════════════════════════════════════
+--  ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- ══════════════════════════════════════════════
+local function corner(r, p)
+    local c = Instance.new("UICorner", p)
+    c.CornerRadius = UDim.new(0, r)
+    return c
+end
+local function stroke(col, thick, p)
+    local s = Instance.new("UIStroke", p)
+    s.Color = col; s.Thickness = thick
+    return s
+end
+local function tw(obj, t, props)
+    TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quint), props):Play()
+end
+
+-- ══════════════════════════════════════════════
+--  СПЛЭШ-ЭКРАН
+-- ══════════════════════════════════════════════
+local Splash = Instance.new("Frame", ScreenGui)
+Splash.Size=UDim2.new(1,0,1,0); Splash.BackgroundColor3=Cfg.Black
+Splash.BorderSizePixel=0; Splash.ZIndex=200
+
+-- Большой синий X по центру (как на картинке)
+local SplashX = Instance.new("TextLabel", Splash)
+SplashX.Size=UDim2.new(0,120,0,120); SplashX.Position=UDim2.new(.5,-60,.5,-90)
+SplashX.BackgroundTransparency=1; SplashX.Text="x"
+SplashX.TextColor3=Cfg.X_BLUE; SplashX.TextTransparency=1
+SplashX.TextSize=96; SplashX.Font=Enum.Font.GothamBold; SplashX.ZIndex=201
+
+local SplashName = Instance.new("TextLabel", Splash)
+SplashName.Size=UDim2.new(0,300,0,28); SplashName.Position=UDim2.new(.5,-150,.5,38)
+SplashName.BackgroundTransparency=1; SplashName.Text="xclient"
+SplashName.TextColor3=Cfg.White; SplashName.TextTransparency=1
+SplashName.TextSize=22; SplashName.Font=Enum.Font.GothamBold; SplashName.ZIndex=201
+
+local SplashSub = Instance.new("TextLabel", Splash)
+SplashSub.Size=UDim2.new(0,300,0,18); SplashSub.Position=UDim2.new(.5,-150,.5,68)
+SplashSub.BackgroundTransparency=1; SplashSub.Text="magic flight  •  v4.0"
+SplashSub.TextColor3=Cfg.TextDim; SplashSub.TextTransparency=1
+SplashSub.TextSize=12; SplashSub.Font=Enum.Font.Gotham; SplashSub.ZIndex=201
+
+local SplashBar = Instance.new("Frame", Splash)
+SplashBar.Size=UDim2.new(0,0,0,1); SplashBar.Position=UDim2.new(.5,-100,.5,100)
+SplashBar.BackgroundColor3=Cfg.X_BLUE; SplashBar.BorderSizePixel=0
+SplashBar.BackgroundTransparency=1; SplashBar.ZIndex=201
+
+task.spawn(function()
+    task.wait(.15)
+    -- X появляется с масштабированием через TextSize
+    TweenService:Create(SplashX,    TweenInfo.new(.5,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    task.wait(.2)
+    TweenService:Create(SplashName, TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    TweenService:Create(SplashSub,  TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0.4}):Play()
+    TweenService:Create(SplashBar,  TweenInfo.new(.1),{BackgroundTransparency=0}):Play()
+    task.wait(.3)
+    TweenService:Create(SplashBar, TweenInfo.new(.8,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,200,0,1)}):Play()
+    task.wait(1.1)
+    TweenService:Create(SplashX,    TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplashName, TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplashSub,  TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplashBar,  TweenInfo.new(.25,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
+    TweenService:Create(Splash,     TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.In), {BackgroundTransparency=1}):Play()
+    task.wait(.45); if Splash and Splash.Parent then Splash:Destroy() end
+end)
+
+-- ══════════════════════════════════════════════
+--  УВЕДОМЛЕНИЯ (тосты)
+-- ══════════════════════════════════════════════
+local notifyStack={}
+local NW,NH,NG,NRP,NBP=254,48,6,14,14
+
+local function showNotify(title, body, accent)
+    accent=accent or Cfg.Accent
+    for _,f in ipairs(notifyStack) do
+        TweenService:Create(f,TweenInfo.new(.18,Enum.EasingStyle.Quint),{
+            Position=UDim2.new(1,-(NW+NRP),1,f.Position.Y.Offset-(NH+NG))
+        }):Play()
+    end
+    local card=Instance.new("Frame",ScreenGui)
+    card.Size=UDim2.new(0,NW,0,NH); card.Position=UDim2.new(1,20,1,-(NH+NBP))
+    card.BackgroundColor3=Cfg.NotifyBG; card.BorderSizePixel=0; card.ZIndex=90
+    corner(4,card); stroke(Cfg.Border,1,card)
+    local bar=Instance.new("Frame",card)
+    bar.Size=UDim2.new(0,2,1,0); bar.BackgroundColor3=accent
+    bar.BorderSizePixel=0; bar.ZIndex=91; corner(3,bar)
+    local tl=Instance.new("TextLabel",card)
+    tl.Size=UDim2.new(1,-14,0,20); tl.Position=UDim2.new(0,11,0,7)
+    tl.BackgroundTransparency=1; tl.Text=title; tl.TextColor3=Cfg.White
+    tl.TextSize=12; tl.Font=Enum.Font.GothamBold
+    tl.TextXAlignment=Enum.TextXAlignment.Left; tl.ZIndex=91
+    local bl=Instance.new("TextLabel",card)
+    bl.Size=UDim2.new(1,-14,0,16); bl.Position=UDim2.new(0,11,0,27)
+    bl.BackgroundTransparency=1; bl.Text=body; bl.TextColor3=Cfg.TextDim
+    bl.TextSize=10; bl.Font=Enum.Font.Gotham
+    bl.TextXAlignment=Enum.TextXAlignment.Left; bl.ZIndex=91
+    TweenService:Create(card,TweenInfo.new(.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+        Position=UDim2.new(1,-(NW+NRP),1,-(NH+NBP))
+    }):Play()
+    table.insert(notifyStack,card)
+    task.delay(3.5,function()
+        for i,c in ipairs(notifyStack) do if c==card then table.remove(notifyStack,i) break end end
+        if not(card and card.Parent) then return end
+        TweenService:Create(card,TweenInfo.new(.22,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{
+            Position=UDim2.new(1,22,1,card.Position.Y.Offset)
+        }):Play()
+        task.wait(.25); if card and card.Parent then card:Destroy() end
+    end)
+end
+
+-- ══════════════════════════════════════════════
+--  ИКОНКА  (синяя X, как на картинке)
+-- ══════════════════════════════════════════════
+local IconBtn=Instance.new("TextButton",ScreenGui)
+IconBtn.Size=UDim2.new(0,52,0,52); IconBtn.Position=UDim2.new(0,16,0,16)
+IconBtn.BackgroundColor3=Cfg.Black; IconBtn.BorderSizePixel=0
+IconBtn.Text=""; IconBtn.AutoButtonColor=false; IconBtn.ZIndex=10
+corner(26,IconBtn)   -- полный круг
+local IconRing=stroke(Cfg.Border,1.5,IconBtn)
+
+-- Синяя X внутри круга
+local IconX=Instance.new("TextLabel",IconBtn)
+IconX.Size=UDim2.new(1,0,1,0); IconX.BackgroundTransparency=1
+IconX.Text="x"; IconX.TextColor3=Cfg.X_BLUE
+IconX.TextSize=26; IconX.Font=Enum.Font.GothamBold; IconX.ZIndex=11
+
+IconBtn.MouseEnter:Connect(function()
+    tw(IconRing,.15,{Color=Cfg.X_BLUE})
+    tw(IconX,.15,{TextColor3=Cfg.White})
+end)
+IconBtn.MouseLeave:Connect(function()
+    tw(IconRing,.15,{Color=Cfg.Border})
+    tw(IconX,.15,{TextColor3=Cfg.X_BLUE})
+end)
+
+-- ══════════════════════════════════════════════
+--  ГЛАВНОЕ ОКНО
+-- ══════════════════════════════════════════════
+local WIN_W,WIN_H = 480,300
+local SIDE_W      = 130
+
+local MainFrame=Instance.new("CanvasGroup",ScreenGui)
+MainFrame.Size=UDim2.new(0,WIN_W,0,WIN_H)
+MainFrame.Position=UDim2.new(.5,-WIN_W/2,-1,0)
+MainFrame.BackgroundColor3=Cfg.BG
+MainFrame.BackgroundTransparency=0.06
+MainFrame.GroupTransparency=1
+MainFrame.BorderSizePixel=0; MainFrame.ZIndex=10
+local MainCorner=corner(12,MainFrame)
+stroke(Cfg.Border,1,MainFrame)
+
+-- ── САЙДБАР ──
+local Sidebar=Instance.new("Frame",MainFrame)
+Sidebar.Size=UDim2.new(0,SIDE_W,1,0)
+Sidebar.BackgroundColor3=Cfg.Sidebar
+Sidebar.BorderSizePixel=0; Sidebar.ZIndex=11
+corner(12,Sidebar)
+-- Прямой правый край (поверх скругления)
+local SFix=Instance.new("Frame",Sidebar)
+SFix.Size=UDim2.new(0,16,1,0); SFix.Position=UDim2.new(1,-16,0,0)
+SFix.BackgroundColor3=Cfg.Sidebar; SFix.BorderSizePixel=0; SFix.ZIndex=12
+
+-- Разделитель между сайдбаром и контентом
+local SideLine=Instance.new("Frame",MainFrame)
+SideLine.Size=UDim2.new(0,1,1,0); SideLine.Position=UDim2.new(0,SIDE_W,0,0)
+SideLine.BackgroundColor3=Cfg.Border; SideLine.BorderSizePixel=0; SideLine.ZIndex=11
+
+-- Логотип xclient в сайдбаре (с синей X и текстом "client")
+local LogoX=Instance.new("TextLabel",Sidebar)
+LogoX.Size=UDim2.new(0,32,0,32); LogoX.Position=UDim2.new(0,12,0,14)
+LogoX.BackgroundTransparency=1; LogoX.Text="x"
+LogoX.TextColor3=Cfg.X_BLUE; LogoX.TextSize=28
+LogoX.Font=Enum.Font.GothamBold; LogoX.ZIndex=13
+
+local LogoTxt=Instance.new("TextLabel",Sidebar)
+LogoTxt.Size=UDim2.new(1,-50,0,14); LogoTxt.Position=UDim2.new(0,44,0,20)
+LogoTxt.BackgroundTransparency=1; LogoTxt.Text="client"
+LogoTxt.TextColor3=Cfg.TextMid; LogoTxt.TextSize=11
+LogoTxt.Font=Enum.Font.GothamBold
+LogoTxt.TextXAlignment=Enum.TextXAlignment.Left; LogoTxt.ZIndex=13
+
+-- Версия под логотипом
+local LogoVer=Instance.new("TextLabel",Sidebar)
+LogoVer.Size=UDim2.new(1,0,0,12); LogoVer.Position=UDim2.new(0,12,0,46)
+LogoVer.BackgroundTransparency=1; LogoVer.Text="v4.0"
+LogoVer.TextColor3=Cfg.TextDim; LogoVer.TextSize=9
+LogoVer.Font=Enum.Font.Gotham
+LogoVer.TextXAlignment=Enum.TextXAlignment.Left; LogoVer.ZIndex=13
+
+-- Тонкая линия под логотипом
+local LogoDiv=Instance.new("Frame",Sidebar)
+LogoDiv.Size=UDim2.new(1,-20,0,1); LogoDiv.Position=UDim2.new(0,10,0,64)
+LogoDiv.BackgroundColor3=Cfg.Border; LogoDiv.BorderSizePixel=0; LogoDiv.ZIndex=13
+
+-- ── КОНТЕНТ-ОБЛАСТЬ ──
+local ContentArea=Instance.new("Frame",MainFrame)
+ContentArea.Size=UDim2.new(1,-SIDE_W-1,1,0)
+ContentArea.Position=UDim2.new(0,SIDE_W+1,0,0)
+ContentArea.BackgroundTransparency=1; ContentArea.BorderSizePixel=0; ContentArea.ZIndex=11
+
+-- ══════════════════════════════════════════════
+--  ВКЛАДКИ (сайдбар)
+-- ══════════════════════════════════════════════
+local TABS      = {"MOV","COM","VISUAL","GUI"}
+local tabPages  = {}
+local tabBtns   = {}
+local tabIndics = {}
+local activeTab = "MOV"
+local sideY     = 76
+
+-- Иконки вкладок
+local TAB_ICONS = {MOV="✈", COM="⚙", VISUAL="◈", GUI="▣"}
+
+for _,name in ipairs(TABS) do
+    -- Кнопка в сайдбаре
+    local btn=Instance.new("TextButton",Sidebar)
+    btn.Size=UDim2.new(1,-14,0,34); btn.Position=UDim2.new(0,7,0,sideY)
+    btn.BackgroundTransparency=1; btn.BorderSizePixel=0
+    btn.Text=""; btn.AutoButtonColor=false; btn.ZIndex=13
+    corner(6,btn)
+
+    -- Иконка
+    local bIcon=Instance.new("TextLabel",btn)
+    bIcon.Size=UDim2.new(0,22,1,0); bIcon.Position=UDim2.new(0,8,0,0)
+    bIcon.BackgroundTransparency=1; bIcon.Text=TAB_ICONS[name] or "•"
+    bIcon.TextColor3=Cfg.TextDim; bIcon.TextSize=13
+    bIcon.Font=Enum.Font.Gotham; bIcon.ZIndex=14
+
+    -- Текст
+    local bTxt=Instance.new("TextLabel",btn)
+    bTxt.Size=UDim2.new(1,-38,1,0); bTxt.Position=UDim2.new(0,32,0,0)
+    bTxt.BackgroundTransparency=1; bTxt.Text=name
+    bTxt.TextColor3=Cfg.TextDim; bTxt.TextSize=11
+    bTxt.Font=Enum.Font.GothamBold
+    bTxt.TextXAlignment=Enum.TextXAlignment.Left; bTxt.ZIndex=14
+
+    -- Синяя линия-индикатор слева
+    local indic=Instance.new("Frame",btn)
+    indic.Size=UDim2.new(0,2,0.55,0); indic.Position=UDim2.new(0,0,0.225,0)
+    indic.BackgroundColor3=Cfg.Accent; indic.BorderSizePixel=0; indic.ZIndex=14
+    indic.BackgroundTransparency=1; corner(2,indic)
+
+    -- Страница контента
+    local page=Instance.new("ScrollingFrame",ContentArea)
+    page.Size=UDim2.new(1,0,1,0); page.BackgroundTransparency=1
+    page.BorderSizePixel=0; page.ScrollBarThickness=2
+    page.ScrollBarImageColor3=Cfg.BorderLight
+    page.CanvasSize=UDim2.new(0,0,0,0)
+    page.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    page.Visible=false; page.ZIndex=12
+    local lay=Instance.new("UIListLayout",page)
+    lay.Padding=UDim.new(0,0); lay.SortOrder=Enum.SortOrder.LayoutOrder
+    local pad=Instance.new("UIPadding",page)
+    pad.PaddingTop=UDim.new(0,0); pad.PaddingBottom=UDim.new(0,8)
+    pad.PaddingLeft=UDim.new(0,0); pad.PaddingRight=UDim.new(0,0)
+
+    tabPages[name]=page; tabBtns[name]={btn=btn,icon=bIcon,txt=bTxt}; tabIndics[name]=indic
+    sideY=sideY+38
+end
+
+local function switchTab(name)
+    activeTab=name
+    for _,n in ipairs(TABS) do
+        local isA=(n==name)
+        local d=tabBtns[n]
+        tw(d.btn,.15,{BackgroundTransparency=isA and 0.82 or 1,
+            BackgroundColor3=isA and Cfg.BG3 or Cfg.BG})
+        tw(d.icon,.15,{TextColor3=isA and Cfg.X_BLUE or Cfg.TextDim})
+        tw(d.txt,.15,{TextColor3=isA and Cfg.White or Cfg.TextDim})
+        tw(tabIndics[n],.15,{BackgroundTransparency=isA and 0 or 1})
+        tabPages[n].Visible=isA
+    end
+end
+for _,name in ipairs(TABS) do
+    tabBtns[name].btn.MouseButton1Click:Connect(function() switchTab(name) end)
+    tabBtns[name].btn.MouseEnter:Connect(function()
+        if activeTab~=name then tw(tabBtns[name].txt,.1,{TextColor3=Cfg.TextMid}) end
+    end)
+    tabBtns[name].btn.MouseLeave:Connect(function()
+        if activeTab~=name then tw(tabBtns[name].txt,.1,{TextColor3=Cfg.TextDim}) end
+    end)
+end
+
+-- ══════════════════════════════════════════════
+--  ЭЛЕМЕНТЫ СТРАНИЦ — CS СТИЛЬ
+-- ══════════════════════════════════════════════
+
+-- Заголовок секции
+local function csSectionLabel(page, text, order)
+    local wrap=Instance.new("Frame",page)
+    wrap.Size=UDim2.new(1,0,0,28); wrap.BackgroundTransparency=1
+    wrap.BorderSizePixel=0; wrap.ZIndex=13; wrap.LayoutOrder=order or #page:GetChildren()
+    local lbl=Instance.new("TextLabel",wrap)
+    lbl.Size=UDim2.new(1,-16,1,0); lbl.Position=UDim2.new(0,12,0,0)
+    lbl.BackgroundTransparency=1; lbl.Text=text:upper()
+    lbl.TextColor3=Cfg.Accen
