@@ -124,9 +124,7 @@ local COLORS_PANEL = {
 	accent = Color3.fromRGB(180, 130, 255),
 	accentGreen = Color3.fromRGB(100, 200, 120),
 	accentRed = Color3.fromRGB(255, 100, 100),
-	accentBlue = Colo
-
-r3.fromRGB(100, 180, 255),
+	accentBlue = Color3.fromRGB(100, 180, 255),
 	textPrimary = Color3.fromRGB(255, 255, 255),
 	textSecondary = Color3.fromRGB(180, 180, 190),
 	textMuted = Color3.fromRGB(100, 100, 120),
