@@ -1,1218 +1,463 @@
 --[[
-	╔══════════════════════════════════════════════════════════════╗
-	║                    XCLIENT v4.2                              ║
-	║    COMPATIBLE WITH: DELTA | XENO | FLUXUS | CODEX           ║
-	║    3 GUI STYLES: CS | PANEL | PLATON                        ║
-	╚══════════════════════════════════════════════════════════════╝
-	
-	loadstring(game:HttpGet("YOUR_RAW_LINK"))()
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                  xclient — MAGIC FLIGHT                      ║
+    ║                  Версия 4.1 | Exploit Edition                ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  СОВМЕСТИМОСТЬ:                                              ║
+    ║  ✓ Delta Executor                                            ║
+    ║  ✓ Xeno Executor                                             ║
+    ║  ✓ Fluxus                                                    ║
+    ║  ✓ Codex                                                     ║
+    ║  ✓ Solara / Synapse X / KRNL и другие                        ║
+    ╠══════════════════════════════════════════════════════════════╣
+    ║  ЗАПУСК: вставь скрипт в executor → Execute                  ║
+    ║  Повторный запуск безопасен (защита от дублей)               ║
+    ╚══════════════════════════════════════════════════════════════╝
 --]]
 
--- ═══════════════════════════════════════════════════════════════
--- EXECUTOR COMPATIBILITY
--- ═══════════════════════════════════════════════════════════════
-local env = getgenv and getgenv() or _G
-if env.XClientLoaded then warn("[XCLIENT] Already running!") return end
-env.XClientLoaded = true
+-- ══════════════════════════════════════════════
+--  ОПРЕДЕЛЕНИЕ ОКРУЖЕНИЯ ЭКСПЛОЙТА
+--  Поддержка: Delta, Xeno, Fluxus, Codex,
+--             Solara, Synapse X, KRNL и др.
+-- ══════════════════════════════════════════════
 
-local taskLib = task or { wait = wait, spawn = function(f) coroutine.wrap(f)() end, delay = delay }
+-- Универсальное глобальное хранилище.
+-- getgenv() есть в большинстве эксплойтов (Synapse, KRNL, Fluxus, Delta, Xeno, Codex).
+-- Если недоступно — падаем на _G (работает везде).
+local ENV = (typeof(getgenv) == "function" and getgenv()) or _G
 
--- ═══════════════════════════════════════════════════════════════
--- SERVICES
--- ═══════════════════════════════════════════════════════════════
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
+-- ══════════════════════════════════════════════
+--  ЗАЩИТА ОТ ДВОЙНОГО ЗАПУСКА
+-- ══════════════════════════════════════════════
+if ENV.xclientLoaded then
+    -- Скрипт уже запущен — просто перезапускаем GUI
+    -- (уничтожаем старый ScreenGui, продолжаем выполнение)
+    local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        local old = pg:FindFirstChild("xclient_v4")
+        if old then old:Destroy() end
+    end
+    -- Сбрасываем флаг чтобы пересоздать всё ниже
+end
+ENV.xclientLoaded = true
 
--- ═══════════════════════════════════════════════════════════════
--- CHARACTER (ИСПРАВЛЕННЫЙ БЛОК)
--- ═══════════════════════════════════════════════════════════════
-local player = Players.LocalPlayer
-local character = player.Character
-if not character or not character.Parent then
-    character = player.CharacterAdded:Wait()
+-- ══════════════════════════════════════════════
+--  ОПРЕДЕЛЯЕМ РОДИТЕЛЯ ДЛЯ GUI
+--  Delta / Xeno / Codex / Fluxus умеют писать
+--  в CoreGui — используем его как приоритет,
+--  чтобы GUI не сбрасывался при respawn.
+--  Если CoreGui недоступен — используем PlayerGui.
+-- ══════════════════════════════════════════════
+local GuiParent
+do
+    local ok, coreGui = pcall(function()
+        return game:GetService("CoreGui")
+    end)
+    if ok and coreGui then
+        -- Проверяем, разрешает ли эксплойт запись в CoreGui
+        local canWrite = pcall(function()
+            local t = Instance.new("Frame")
+            t.Parent = coreGui
+            t:Destroy()
+        end)
+        GuiParent = canWrite and coreGui
+            or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    else
+        GuiParent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    end
 end
 
-local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 15)
-local rootPart = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 15)
+-- ══════════════════════════════════════════════
+--  КОНФИГ
+-- ══════════════════════════════════════════════
+local Cfg = {
+    NormalSpeed          = 18,
+    VerticalSpeed        = 10,
+    ResolverBoostSpeed   = 21,
+    ResolverDetectRadius = 13,
+    ResolverSafeRadius   = 10,
+    ResolverRiseSpeed    = 15,
+    ResolverSinkSpeed    = 6,
+    ResolverVertLerp     = 0.08,
+    ResolverSpeedBoost   = 1.35,
+    LerpAlpha            = 0.20,
+    -- Покачивание
+    WobbleAmp   = 0.08,  WobbleFreq  = 1.6,
+    DriftAmp    = 0.06,  DriftMin    = 0.4,
+    DriftMax    = 1.1,   DriftLerp   = 0.04,
+    StepAmp     = 0.03,  StepFreq    = 4.2,   StepPow = 3.0,
+    -- Цвета CS-стиль
+    X_BLUE      = Color3.fromRGB(135, 206, 250),  -- цвет иконки X (как на картинке)
+    Accent      = Color3.fromRGB(0,   160, 255),
+    AccentRes   = Color3.fromRGB(255, 195, 65),
+    AccentGui   = Color3.fromRGB(160, 130, 255),
+    BG          = Color3.fromRGB(22,  22,  28),
+    BG2         = Color3.fromRGB(16,  16,  20),
+    BG3         = Color3.fromRGB(30,  30,  38),
+    BG4         = Color3.fromRGB(12,  12,  16),
+    Sidebar     = Color3.fromRGB(10,  10,  14),
+    Text        = Color3.fromRGB(210, 210, 220),
+    TextDim     = Color3.fromRGB(88,  88,  106),
+    TextMid     = Color3.fromRGB(140, 140, 155),
+    Border      = Color3.fromRGB(40,  40,  52),
+    BorderLight = Color3.fromRGB(60,  60,  78),
+    Black       = Color3.fromRGB(0,   0,   0),
+    White       = Color3.fromRGB(255, 255, 255),
+    NotifyBG    = Color3.fromRGB(12,  12,  16),
+    -- Цвета Panel-стиль (Minecraft-inspired)
+    P_BG        = Color3.fromRGB(20,  18,  28),
+    P_HEADER    = Color3.fromRGB(30,  26,  42),
+    P_ROW       = Color3.fromRGB(26,  22,  36),
+    P_ROW2      = Color3.fromRGB(22,  18,  30),
+    P_ACCENT    = Color3.fromRGB(100, 180, 255),
+    P_BORDER    = Color3.fromRGB(55,  45,  75),
+    P_TEXT      = Color3.fromRGB(220, 215, 235),
+    P_TEXTDIM   = Color3.fromRGB(110, 100, 135),
+}
 
-if not humanoid or not rootPart then
-    -- Если всё равно не нашло, попробуем еще раз через секунду, а не вылетаем
-    taskLib.delay(1, function()
-        print("[XCLIENT] Retry loading character...")
-        -- Перезапуск логики персонажа
+-- ══════════════════════════════════════════════
+--  СЕРВИСЫ
+-- ══════════════════════════════════════════════
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace        = game:GetService("Workspace")
+
+-- ══════════════════════════════════════════════
+--  ОБЪЕКТЫ СЦЕНЫ
+-- ══════════════════════════════════════════════
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+local Camera      = Workspace.CurrentCamera
+local Character   = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local Humanoid    = Character:WaitForChild("Humanoid")
+local RootPart    = Character:WaitForChild("HumanoidRootPart")
+
+-- ══════════════════════════════════════════════
+--  СОСТОЯНИЕ
+-- ══════════════════════════════════════════════
+local Flying          = false
+local heartConn       = nil
+local ResolverOn      = false
+local resolverActive  = false
+local resolverVertVel = 0
+local guiStyle        = "cs"   -- "cs" | "panel"
+local menuOpen        = false
+local wobbleT=0; local stepT=0
+local driftCur=0; local driftTgt=0; local driftTmr=0; local driftIval=0.7
+
+-- ══════════════════════════════════════════════
+--  ЗАЩИТА ОТ ДУБЛИРОВАНИЯ GUI
+-- ══════════════════════════════════════════════
+local GUI_TAG = "xclient_v4"
+-- Чистим в обоих возможных родителях
+local function cleanOldGui()
+    local pg = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
+    if pg and pg:FindFirstChild(GUI_TAG) then pg[GUI_TAG]:Destroy() end
+    local ok, cg = pcall(game.GetService, game, "CoreGui")
+    if ok and cg and cg:FindFirstChild(GUI_TAG) then cg[GUI_TAG]:Destroy() end
+end
+cleanOldGui()
+
+-- ══════════════════════════════════════════════
+--  ROOT SCREENGUI
+-- ══════════════════════════════════════════════
+local ScreenGui          = Instance.new("ScreenGui")
+ScreenGui.Name           = GUI_TAG
+ScreenGui.ResetOnSpawn   = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true   -- важно для эксплойтов
+ScreenGui.Parent         = GuiParent
+
+-- ══════════════════════════════════════════════
+--  ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- ══════════════════════════════════════════════
+local function corner(r, p)
+    local c = Instance.new("UICorner", p)
+    c.CornerRadius = UDim.new(0, r)
+    return c
+end
+local function stroke(col, thick, p)
+    local s = Instance.new("UIStroke", p)
+    s.Color = col; s.Thickness = thick
+    return s
+end
+local function tw(obj, t, props)
+    TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quint), props):Play()
+end
+
+-- ══════════════════════════════════════════════
+--  СПЛЭШ-ЭКРАН
+-- ══════════════════════════════════════════════
+local Splash = Instance.new("Frame", ScreenGui)
+Splash.Size=UDim2.new(1,0,1,0); Splash.BackgroundColor3=Cfg.Black
+Splash.BorderSizePixel=0; Splash.ZIndex=200
+
+-- Большой синий X по центру (как на картинке)
+local SplashX = Instance.new("TextLabel", Splash)
+SplashX.Size=UDim2.new(0,120,0,120); SplashX.Position=UDim2.new(.5,-60,.5,-90)
+SplashX.BackgroundTransparency=1; SplashX.Text="x"
+SplashX.TextColor3=Cfg.X_BLUE; SplashX.TextTransparency=1
+SplashX.TextSize=96; SplashX.Font=Enum.Font.GothamBold; SplashX.ZIndex=201
+
+local SplashName = Instance.new("TextLabel", Splash)
+SplashName.Size=UDim2.new(0,300,0,28); SplashName.Position=UDim2.new(.5,-150,.5,38)
+SplashName.BackgroundTransparency=1; SplashName.Text="xclient"
+SplashName.TextColor3=Cfg.White; SplashName.TextTransparency=1
+SplashName.TextSize=22; SplashName.Font=Enum.Font.GothamBold; SplashName.ZIndex=201
+
+local SplashSub = Instance.new("TextLabel", Splash)
+SplashSub.Size=UDim2.new(0,300,0,18); SplashSub.Position=UDim2.new(.5,-150,.5,68)
+SplashSub.BackgroundTransparency=1; SplashSub.Text="magic flight  •  v4.0"
+SplashSub.TextColor3=Cfg.TextDim; SplashSub.TextTransparency=1
+SplashSub.TextSize=12; SplashSub.Font=Enum.Font.Gotham; SplashSub.ZIndex=201
+
+local SplashBar = Instance.new("Frame", Splash)
+SplashBar.Size=UDim2.new(0,0,0,1); SplashBar.Position=UDim2.new(.5,-100,.5,100)
+SplashBar.BackgroundColor3=Cfg.X_BLUE; SplashBar.BorderSizePixel=0
+SplashBar.BackgroundTransparency=1; SplashBar.ZIndex=201
+
+task.spawn(function()
+    task.wait(.15)
+    -- X появляется с масштабированием через TextSize
+    TweenService:Create(SplashX,    TweenInfo.new(.5,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    task.wait(.2)
+    TweenService:Create(SplashName, TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    TweenService:Create(SplashSub,  TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0.4}):Play()
+    TweenService:Create(SplashBar,  TweenInfo.new(.1),{BackgroundTransparency=0}):Play()
+    task.wait(.3)
+    TweenService:Create(SplashBar, TweenInfo.new(.8,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,200,0,1)}):Play()
+    task.wait(1.1)
+    TweenService:Create(SplashX,    TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplashName, TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplashSub,  TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplashBar,  TweenInfo.new(.25,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
+    TweenService:Create(Splash,     TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.In), {BackgroundTransparency=1}):Play()
+    task.wait(.45); if Splash and Splash.Parent then Splash:Destroy() end
+end)
+
+-- ══════════════════════════════════════════════
+--  УВЕДОМЛЕНИЯ (тосты)
+-- ══════════════════════════════════════════════
+local notifyStack={}
+local NW,NH,NG,NRP,NBP=254,48,6,14,14
+
+local function showNotify(title, body, accent)
+    accent=accent or Cfg.Accent
+    for _,f in ipairs(notifyStack) do
+        TweenService:Create(f,TweenInfo.new(.18,Enum.EasingStyle.Quint),{
+            Position=UDim2.new(1,-(NW+NRP),1,f.Position.Y.Offset-(NH+NG))
+        }):Play()
+    end
+    local card=Instance.new("Frame",ScreenGui)
+    card.Size=UDim2.new(0,NW,0,NH); card.Position=UDim2.new(1,20,1,-(NH+NBP))
+    card.BackgroundColor3=Cfg.NotifyBG; card.BorderSizePixel=0; card.ZIndex=90
+    corner(4,card); stroke(Cfg.Border,1,card)
+    local bar=Instance.new("Frame",card)
+    bar.Size=UDim2.new(0,2,1,0); bar.BackgroundColor3=accent
+    bar.BorderSizePixel=0; bar.ZIndex=91; corner(3,bar)
+    local tl=Instance.new("TextLabel",card)
+    tl.Size=UDim2.new(1,-14,0,20); tl.Position=UDim2.new(0,11,0,7)
+    tl.BackgroundTransparency=1; tl.Text=title; tl.TextColor3=Cfg.White
+    tl.TextSize=12; tl.Font=Enum.Font.GothamBold
+    tl.TextXAlignment=Enum.TextXAlignment.Left; tl.ZIndex=91
+    local bl=Instance.new("TextLabel",card)
+    bl.Size=UDim2.new(1,-14,0,16); bl.Position=UDim2.new(0,11,0,27)
+    bl.BackgroundTransparency=1; bl.Text=body; bl.TextColor3=Cfg.TextDim
+    bl.TextSize=10; bl.Font=Enum.Font.Gotham
+    bl.TextXAlignment=Enum.TextXAlignment.Left; bl.ZIndex=91
+    TweenService:Create(card,TweenInfo.new(.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{
+        Position=UDim2.new(1,-(NW+NRP),1,-(NH+NBP))
+    }):Play()
+    table.insert(notifyStack,card)
+    task.delay(3.5,function()
+        for i,c in ipairs(notifyStack) do if c==card then table.remove(notifyStack,i) break end end
+        if not(card and card.Parent) then return end
+        TweenService:Create(card,TweenInfo.new(.22,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{
+            Position=UDim2.new(1,22,1,card.Position.Y.Offset)
+        }):Play()
+        task.wait(.25); if card and card.Parent then card:Destroy() end
     end)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- CONFIG
--- ═══════════════════════════════════════════════════════════════
-env.FlightSpeed = env.FlightSpeed or 16
-env.XClientGuiStyle = env.XClientGuiStyle or "platon"
+-- ══════════════════════════════════════════════
+--  ИКОНКА  (синяя X, как на картинке)
+-- ══════════════════════════════════════════════
+local IconBtn=Instance.new("TextButton",ScreenGui)
+IconBtn.Size=UDim2.new(0,52,0,52); IconBtn.Position=UDim2.new(0,16,0,16)
+IconBtn.BackgroundColor3=Cfg.Black; IconBtn.BorderSizePixel=0
+IconBtn.Text=""; IconBtn.AutoButtonColor=false; IconBtn.ZIndex=10
+corner(26,IconBtn)   -- полный круг
+local IconRing=stroke(Cfg.Border,1.5,IconBtn)
 
--- ═══════════════════════════════════════════════════════════════
--- VARIABLES
--- ═══════════════════════════════════════════════════════════════
-local isFlying = false
-local isMenuOpen = false
-local isMagicResolverEnabled = false
-local currentTab = "mov"
-local currentGuiStyle = env.XClientGuiStyle
-local verticalVelocity = 0
-local hoverTime = 0
-local flightConnection = nil
-local bodyGyro = nil
+-- Синяя X внутри круга
+local IconX=Instance.new("TextLabel",IconBtn)
+IconX.Size=UDim2.new(1,0,1,0); IconX.BackgroundTransparency=1
+IconX.Text="x"; IconX.TextColor3=Cfg.X_BLUE
+IconX.TextSize=26; IconX.Font=Enum.Font.GothamBold; IconX.ZIndex=11
 
--- Flight settings
-local HOVER_AMPLITUDE = 0.12
-local HOVER_FREQUENCY = 2.2
-local LERP_SPEED = 0.18
-local VERTICAL_SPEED = 0.85
-local TILT_AMOUNT = 0.15
-local ACCELERATION = 0.08
-local DECELERATION = 0.05
+IconBtn.MouseEnter:Connect(function()
+    tw(IconRing,.15,{Color=Cfg.X_BLUE})
+    tw(IconX,.15,{TextColor3=Cfg.White})
+end)
+IconBtn.MouseLeave:Connect(function()
+    tw(IconRing,.15,{Color=Cfg.Border})
+    tw(IconX,.15,{TextColor3=Cfg.X_BLUE})
+end)
 
--- Resolver
-local RESOLVER_DETECT_RADIUS = 12
-local RESOLVER_SAFE_RADIUS = 10
-local RESOLVER_LIFT_HEIGHT = 8
-local RESOLVER_SPEED_BOOST = 1.4
-local resolverTargetHeight = 0
-local resolverCurrentBoost = 1
+-- ══════════════════════════════════════════════
+--  ГЛАВНОЕ ОКНО
+-- ══════════════════════════════════════════════
+local WIN_W,WIN_H = 480,300
+local SIDE_W      = 130
 
--- Randomization
-local nextRandomTime = 0
-local randomOffset = 0
-local targetRandomOffset = 0
-local microDropTimer = 0
-local microDropOffset = 0
+local MainFrame=Instance.new("CanvasGroup",ScreenGui)
+MainFrame.Size=UDim2.new(0,WIN_W,0,WIN_H)
+MainFrame.Position=UDim2.new(.5,-WIN_W/2,-1,0)
+MainFrame.BackgroundColor3=Cfg.BG
+MainFrame.BackgroundTransparency=0.06
+MainFrame.GroupTransparency=1
+MainFrame.BorderSizePixel=0; MainFrame.ZIndex=10
+local MainCorner=corner(12,MainFrame)
+stroke(Cfg.Border,1,MainFrame)
 
--- Enhanced flight
-local currentSpeed = 0
-local targetSpeed = 0
-local tiltAngle = 0
-local targetTiltAngle = 0
-local breathePhase = 0
-local windEffect = 0
+-- ── САЙДБАР ──
+local Sidebar=Instance.new("Frame",MainFrame)
+Sidebar.Size=UDim2.new(0,SIDE_W,1,0)
+Sidebar.BackgroundColor3=Cfg.Sidebar
+Sidebar.BorderSizePixel=0; Sidebar.ZIndex=11
+corner(12,Sidebar)
+-- Прямой правый край (поверх скругления)
+local SFix=Instance.new("Frame",Sidebar)
+SFix.Size=UDim2.new(0,16,1,0); SFix.Position=UDim2.new(1,-16,0,0)
+SFix.BackgroundColor3=Cfg.Sidebar; SFix.BorderSizePixel=0; SFix.ZIndex=12
 
--- ═══════════════════════════════════════════════════════════════
--- COLORS
--- ═══════════════════════════════════════════════════════════════
-local COLORS_CS = {
-	background = Color3.fromRGB(18, 18, 22),
-	backgroundLight = Color3.fromRGB(28, 28, 35),
-	backgroundDark = Color3.fromRGB(12, 12, 16),
-	accent = Color3.fromRGB(255, 165, 0),
-	accentGreen = Color3.fromRGB(76, 175, 80),
-	accentRed = Color3.fromRGB(244, 67, 54),
-	accentBlue = Color3.fromRGB(66, 165, 245),
-	textPrimary = Color3.fromRGB(255, 255, 255),
-	textSecondary = Color3.fromRGB(140, 140, 150),
-	textMuted = Color3.fromRGB(80, 80, 90),
-	border = Color3.fromRGB(45, 45, 55),
-	tabInactive = Color3.fromRGB(35, 35, 42),
-	toggleOff = Color3.fromRGB(50, 50, 60),
-	toggleOn = Color3.fromRGB(255, 165, 0)
-}
+-- Разделитель между сайдбаром и контентом
+local SideLine=Instance.new("Frame",MainFrame)
+SideLine.Size=UDim2.new(0,1,1,0); SideLine.Position=UDim2.new(0,SIDE_W,0,0)
+SideLine.BackgroundColor3=Cfg.Border; SideLine.BorderSizePixel=0; SideLine.ZIndex=11
 
-local COLORS_PANEL = {
-	background = Color3.fromRGB(25, 25, 35),
-	backgroundLight = Color3.fromRGB(35, 35, 50),
-	backgroundDark = Color3.fromRGB(15, 15, 22),
-	accent = Color3.fromRGB(180, 130, 255),
-	accentGreen = Color3.fromRGB(100, 200, 120),
-	accentRed = Color3.fromRGB(255, 100, 100),
-	accentBlue = Color3.fromRGB(100, 180, 255),
-	textPrimary = Color3.fromRGB(255, 255, 255),
-	textSecondary = Color3.fromRGB(180, 180, 190),
-	textMuted = Color3.fromRGB(100, 100, 120),
-	border = Color3.fromRGB(60, 60, 80),
-	tabInactive = Color3.fromRGB(40, 40, 55),
-	toggleOff = Color3.fromRGB(60, 60, 70),
-	toggleOn = Color3.fromRGB(180, 130, 255)
-}
+-- Логотип xclient в сайдбаре (с синей X и текстом "client")
+local LogoX=Instance.new("TextLabel",Sidebar)
+LogoX.Size=UDim2.new(0,32,0,32); LogoX.Position=UDim2.new(0,12,0,14)
+LogoX.BackgroundTransparency=1; LogoX.Text="x"
+LogoX.TextColor3=Cfg.X_BLUE; LogoX.TextSize=28
+LogoX.Font=Enum.Font.GothamBold; LogoX.ZIndex=13
 
-local COLORS_PLATON = {
-	background = Color3.fromRGB(74, 74, 74),
-	backgroundLight = Color3.fromRGB(90, 90, 95),
-	backgroundDark = Color3.fromRGB(55, 55, 60),
-	accent = Color3.fromRGB(120, 180, 255),
-	accentGreen = Color3.fromRGB(100, 220, 130),
-	accentRed = Color3.fromRGB(255, 120, 120),
-	accentBlue = Color3.fromRGB(120, 180, 255),
-	textPrimary = Color3.fromRGB(255, 255, 255),
-	textSecondary = Color3.fromRGB(200, 200, 210),
-	textMuted = Color3.fromRGB(150, 150, 160),
-	border = Color3.fromRGB(120, 120, 130),
-	tabInactive = Color3.fromRGB(70, 70, 75),
-	toggleOff = Color3.fromRGB(80, 80, 90),
-	toggleOn = Color3.fromRGB(120, 180, 255)
-}
+local LogoTxt=Instance.new("TextLabel",Sidebar)
+LogoTxt.Size=UDim2.new(1,-50,0,14); LogoTxt.Position=UDim2.new(0,44,0,20)
+LogoTxt.BackgroundTransparency=1; LogoTxt.Text="client"
+LogoTxt.TextColor3=Cfg.TextMid; LogoTxt.TextSize=11
+LogoTxt.Font=Enum.Font.GothamBold
+LogoTxt.TextXAlignment=Enum.TextXAlignment.Left; LogoTxt.ZIndex=13
 
-local COLORS = COLORS_PLATON
+-- Версия под логотипом
+local LogoVer=Instance.new("TextLabel",Sidebar)
+LogoVer.Size=UDim2.new(1,0,0,12); LogoVer.Position=UDim2.new(0,12,0,46)
+LogoVer.BackgroundTransparency=1; LogoVer.Text="v4.0"
+LogoVer.TextColor3=Cfg.TextDim; LogoVer.TextSize=9
+LogoVer.Font=Enum.Font.Gotham
+LogoVer.TextXAlignment=Enum.TextXAlignment.Left; LogoVer.ZIndex=13
 
-local function setColorScheme(style)
-	if style == "cs" then COLORS = COLORS_CS
-	elseif style == "panel" then COLORS = COLORS_PANEL
-	else COLORS = COLORS_PLATON end
-	env.XClientGuiStyle = style
+-- Тонкая линия под логотипом
+local LogoDiv=Instance.new("Frame",Sidebar)
+LogoDiv.Size=UDim2.new(1,-20,0,1); LogoDiv.Position=UDim2.new(0,10,0,64)
+LogoDiv.BackgroundColor3=Cfg.Border; LogoDiv.BorderSizePixel=0; LogoDiv.ZIndex=13
+
+-- ── КОНТЕНТ-ОБЛАСТЬ ──
+local ContentArea=Instance.new("Frame",MainFrame)
+ContentArea.Size=UDim2.new(1,-SIDE_W-1,1,0)
+ContentArea.Position=UDim2.new(0,SIDE_W+1,0,0)
+ContentArea.BackgroundTransparency=1; ContentArea.BorderSizePixel=0; ContentArea.ZIndex=11
+
+-- ══════════════════════════════════════════════
+--  ВКЛАДКИ (сайдбар)
+-- ══════════════════════════════════════════════
+local TABS      = {"MOV","COM","VISUAL","GUI"}
+local tabPages  = {}
+local tabBtns   = {}
+local tabIndics = {}
+local activeTab = "MOV"
+local sideY     = 76
+
+-- Иконки вкладок
+local TAB_ICONS = {MOV="✈", COM="⚙", VISUAL="◈", GUI="▣"}
+
+for _,name in ipairs(TABS) do
+    -- Кнопка в сайдбаре
+    local btn=Instance.new("TextButton",Sidebar)
+    btn.Size=UDim2.new(1,-14,0,34); btn.Position=UDim2.new(0,7,0,sideY)
+    btn.BackgroundTransparency=1; btn.BorderSizePixel=0
+    btn.Text=""; btn.AutoButtonColor=false; btn.ZIndex=13
+    corner(6,btn)
+
+    -- Иконка
+    local bIcon=Instance.new("TextLabel",btn)
+    bIcon.Size=UDim2.new(0,22,1,0); bIcon.Position=UDim2.new(0,8,0,0)
+    bIcon.BackgroundTransparency=1; bIcon.Text=TAB_ICONS[name] or "•"
+    bIcon.TextColor3=Cfg.TextDim; bIcon.TextSize=13
+    bIcon.Font=Enum.Font.Gotham; bIcon.ZIndex=14
+
+    -- Текст
+    local bTxt=Instance.new("TextLabel",btn)
+    bTxt.Size=UDim2.new(1,-38,1,0); bTxt.Position=UDim2.new(0,32,0,0)
+    bTxt.BackgroundTransparency=1; bTxt.Text=name
+    bTxt.TextColor3=Cfg.TextDim; bTxt.TextSize=11
+    bTxt.Font=Enum.Font.GothamBold
+    bTxt.TextXAlignment=Enum.TextXAlignment.Left; bTxt.ZIndex=14
+
+    -- Синяя линия-индикатор слева
+    local indic=Instance.new("Frame",btn)
+    indic.Size=UDim2.new(0,2,0.55,0); indic.Position=UDim2.new(0,0,0.225,0)
+    indic.BackgroundColor3=Cfg.Accent; indic.BorderSizePixel=0; indic.ZIndex=14
+    indic.BackgroundTransparency=1; corner(2,indic)
+
+    -- Страница контента
+    local page=Instance.new("ScrollingFrame",ContentArea)
+    page.Size=UDim2.new(1,0,1,0); page.BackgroundTransparency=1
+    page.BorderSizePixel=0; page.ScrollBarThickness=2
+    page.ScrollBarImageColor3=Cfg.BorderLight
+    page.CanvasSize=UDim2.new(0,0,0,0)
+    page.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    page.Visible=false; page.ZIndex=12
+    local lay=Instance.new("UIListLayout",page)
+    lay.Padding=UDim.new(0,0); lay.SortOrder=Enum.SortOrder.LayoutOrder
+    local pad=Instance.new("UIPadding",page)
+    pad.PaddingTop=UDim.new(0,0); pad.PaddingBottom=UDim.new(0,8)
+    pad.PaddingLeft=UDim.new(0,0); pad.PaddingRight=UDim.new(0,0)
+
+    tabPages[name]=page; tabBtns[name]={btn=btn,icon=bIcon,txt=bTxt}; tabIndics[name]=indic
+    sideY=sideY+38
 end
 
--- ═══════════════════════════════════════════════════════════════
--- GUI PARENT
--- ═══════════════════════════════════════════════════════════════
-local guiParent = player:WaitForChild("PlayerGui")
-
-local existingGui = guiParent:FindFirstChild("XClientGui")
-if existingGui then existingGui:Destroy() end
-
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "XClientGui"
-screenGui.ResetOnSpawn = false
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.DisplayOrder = 999
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = guiParent
-
--- ═══════════════════════════════════════════════════════════════
--- NOTIFICATIONS
--- ═══════════════════════════════════════════════════════════════
-local notificationContainer = Instance.new("Frame")
-notificationContainer.Name = "NotificationContainer"
-notificationContainer.Size = UDim2.new(0, 300, 1, -20)
-notificationContainer.Position = UDim2.new(1, -310, 0, 10)
-notificationContainer.BackgroundTransparency = 1
-notificationContainer.ZIndex = 50
-local guiParent = (game:GetService("CoreGui"):FindFirstChild("RobloxGui") and game:GetService("CoreGui")) or player:WaitForChild("PlayerGui")
-screenGui.Parent = guiParent
-
-local notificationLayout = Instance.new("UIListLayout")
-notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
-notificationLayout.Padding = UDim.new(0, 8)
-notificationLayout.Parent = notificationContainer
-
-local notificationCount = 0
-local tweenInfoFast = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-
-local function showNotification(title, message, notifType)
-	notificationCount = notificationCount + 1
-	local currentOrder = notificationCount
-	
-	local accentColor = COLORS.accent
-	if notifType == "success" then accentColor = COLORS.accentGreen
-	elseif notifType == "error" then accentColor = COLORS.accentRed
-	elseif notifType == "info" then accentColor = COLORS.accentBlue end
-	
-	local notification = Instance.new("Frame")
-	notification.Name = "Notification_" .. currentOrder
-	notification.Size = UDim2.new(1, 0, 0, 60)
-	notification.BackgroundColor3 = COLORS.background
-	notification.BorderSizePixel = 0
-	notification.LayoutOrder = currentOrder
-	notification.BackgroundTransparency = 1
-	notification.ZIndex = 50
-	notification.Parent = notificationContainer
-	
-	local notifCorner = Instance.new("UICorner")
-	notifCorner.CornerRadius = UDim.new(0, 8)
-	notifCorner.Parent = notification
-	
-	local notifStroke = Instance.new("UIStroke")
-	notifStroke.Color = COLORS.border
-	notifStroke.Thickness = 1
-	notifStroke.Transparency = 0.5
-	notifStroke.Parent = notification
-	
-	local accentBar = Instance.new("Frame")
-	accentBar.Size = UDim2.new(0, 4, 1, -10)
-	accentBar.Position = UDim2.new(0, 5, 0, 5)
-	accentBar.BackgroundColor3 = accentColor
-	accentBar.BorderSizePixel = 0
-	accentBar.ZIndex = 51
-	accentBar.Parent = notification
-	
-	local titleLabel = Instance.new("TextLabel")
-	titleLabel.Size = UDim2.new(1, -25, 0, 22)
-	titleLabel.Position = UDim2.new(0, 18, 0, 10)
-	titleLabel.BackgroundTransparency = 1
-	titleLabel.Text = title
-    
- titleLabel.TextColor3 = COLORS.textPrimary
- titleLabel.TextSize = 13
- titleLabel.Font = Enum.Font.GothamBold
- titleLabel.TextXAlignment = Enum.TextXAlignment.Left
- titleLabel.ZIndex = 51
- titleLabel.Parent = notification
- 
- local messageLabel = Instance.new("TextLabel")
- messageLabel.Size = UDim2.new(1, -25, 0, 20)
- messageLabel.Position = UDim2.new(0, 18, 0, 32)
- messageLabel.BackgroundTransparency = 1
- messageLabel.Text = message
- messageLabel.TextColor3 = COLORS.textSecondary
- messageLabel.TextSize = 11
- messageLabel.Font = Enum.Font.Gotham
- messageLabel.TextXAlignment = Enum.TextXAlignment.Left
- messageLabel.ZIndex = 51
- messageLabel.Parent = notification
- 
- notification.Position = UDim2.new(1, 50, 0, 0)
- TweenService:Create(notification, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-  Position = UDim2.new(0, 0, 0, 0),
-  BackgroundTransparency = 0.1
- }):Play()
- 
- taskLib.delay(3.5, function()
-  if notification and notification.Parent then
-   TweenService:Create(notification, TweenInfo.new(0.3), {
-    Position = UDim2.new(1, 50, 0, 0),
-    BackgroundTransparency = 1
-   }):Play()
-   taskLib.delay(0.3, function()
-    if notification and notification.Parent then notification:Destroy() end
-   end)
-  end
- end)
-end
-
--- ═══════════════════════════════════════════════════════════════
--- ANIMATED BACKGROUND
--- ═══════════════════════════════════════════════════════════════
-local animatedBgFrame = Instance.new("Frame")
-animatedBgFrame.Name = "AnimatedBackground"
-animatedBgFrame.Size = UDim2.new(1, 0, 1, 0)
-animatedBgFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-animatedBgFrame.BackgroundTransparency = 1
-animatedBgFrame.Visible = false
-animatedBgFrame.ZIndex = 1
-animatedBgFrame.Parent = screenGui
-
-local glowSpots = {}
-for i = 1, 3 do
- local spot = Instance.new("Frame")
- spot.Size = UDim2.new(0, 200 + i * 50, 0, 200 + i * 50)
- spot.Position = UDim2.new(0.2 * i, 0, 0.3 * i, 0)
- spot.BackgroundColor3 = COLORS.accent
- spot.BackgroundTransparency = 0.85
- spot.BorderSizePixel = 0
- spot.ZIndex = 1
- spot.Parent = animatedBgFrame
- 
- local spotCorner = Instance.new("UICorner")
- spotCorner.CornerRadius = UDim.new(1, 0)
- spotCorner.Parent = spot
- 
- glowSpots[i] = spot
-end
-
--- ═══════════════════════════════════════════════════════════════
--- MENU BUTTON
--- ═══════════════════════════════════════════════════════════════
-local menuButton = Instance.new("TextButton")
-menuButton.Name = "XClientButton"
-menuButton.Size = UDim2.new(0, 55, 0, 55)
-menuButton.Position = UDim2.new(0, 70, 0, 70)
-menuButton.BackgroundColor3 = COLORS.background
-menuButton.BorderSizePixel = 0
-menuButton.Text = ""
-menuButton.AutoButtonColor = false
-menuButton.ZIndex = 10
-menuButton.Parent = screenGui
-
-local menuButtonCorner = Instance.new("UICorner")
-menuButtonCorner.CornerRadius = UDim.new(1, 0)
-menuButtonCorner.Parent = menuButton
-
-local menuButtonStroke = Instance.new("UIStroke")
-menuButtonStroke.Color = COLORS.border
-menuButtonStroke.Thickness = 2
-menuButtonStroke.Parent = menuButton
-
-local buttonText = Instance.new("TextLabel")
-buttonText.Size = UDim2.new(1, 0, 1, 0)
-buttonText.BackgroundTransparency = 1
-buttonText.Text = "X"
-buttonText.TextColor3 = Color3.fromRGB(173, 216, 255)
-buttonText.TextSize = 28
-buttonText.Font = Enum.Font.GothamBold
-buttonText.ZIndex = 11
-buttonText.Parent = menuButton
-
--- ═══════════════════════════════════════════════════════════════
--- MAIN PANEL
--- ═══════════════════════════════════════════════════════════════
-local menuFrame = Instance.new("Frame")
-menuFrame.Name = "MenuFrame"
-menuFrame.Size = UDim2.new(0, 700, 0, 450)
-menuFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-menuFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-menuFrame.BackgroundColor3 = COLORS.background
-menuFrame.BorderSizePixel = 0
-menuFrame.BackgroundTransparency = 0.05
-menuFrame.ClipsDescendants = true
-menuFrame.Visible = true
-menuFrame.ZIndex = 5
-menuFrame.Parent = screenGui
-
-local menuFrameCorner = Instance.new("UICorner")
-menuFrameCorner.CornerRadius = UDim.new(0, 15)
-menuFrameCorner.Parent = menuFrame
-
-local menuFrameStroke = Instance.new("UIStroke")
-menuFrameStroke.Color = COLORS.border
-menuFrameStroke.Thickness = 1
-menuFrameStroke.Transparency = 0.2
-menuFrameStroke.Parent = menuFrame
-
--- ═══════════════════════════════════════════════════════════════
--- SIDEBAR
--- ═══════════════════════════════════════════════════════════════
-local sidebar = Instance.new("Frame")
-sidebar.Name = "Sidebar"
-sidebar.Size = UDim2.new(0, 220, 1, 0)
-sidebar.BackgroundColor3 = COLORS.backgroundDark
-sidebar.BorderSizePixel = 0
-sidebar.ZIndex = 6
-sidebar.Parent = menuFrame
-
-local sidebarCorner = Instance.new("UICorner")
-sidebarCorner.CornerRadius = UDim.new(0, 15)
-sidebarCorner.Parent = sidebar
-
-local sidebarFix = Instance.new("Frame")
-sidebarFix.Size = UDim2.new(0, 20, 1, 0)
-sidebarFix.Position = UDim2.new(1, -20, 0, 0)
-sidebarFix.BackgroundColor3 = COLORS.backgroundDark
-sidebarFix.BorderSizePixel = 0
-sidebarFix.ZIndex = 6
-sidebarFix.Parent = sidebar
-
--- Logo
-local logoContainer = Instance.new("Frame")
-logoContainer.Size = UDim2.new(1, 0, 0, 60)
-logoContainer.BackgroundTransparency = 1
-logoContainer.ZIndex = 7
-logoContainer.Parent = sidebar
-
-local logoX = Instance.new("TextLabel")
-logoX.Size = UDim2.new(0, 50, 0, 50)
-logoX.Position = UDim2.new(0, 15, 0.5, -25)
-logoX.BackgroundTransparency = 1
-logoX.Text = "X"
-logoX.TextColor3 = Color3.fromRGB(173, 216, 255)
-logoX.TextSize = 36
-logoX.Font = Enum.Font.GothamBold
-logoX.ZIndex = 8
-logoX.Parent = logoContainer
-
-local logoText = Instance.new("TextLabel")
-logoText.Size = UDim2.new(0, 120, 0, 25)
-logoText.Position = UDim2.new(0, 55, 0.5, -12)
-logoText.BackgroundTransparency = 1
-logoText.Text = "client"
-logoText.TextColor3 = COLORS.textPrimary
-logoText.TextSize = 20
-logoText.Font = Enum.Font.GothamBold
-logoText.TextXAlignment = Enum.TextXAlignment.Left
-logoText.ZIndex = 8
-logoText.Parent = logoContainer
-
--- ═══════════════════════════════════════════════════════════════
--- TABS
--- ═══════════════════════════════════════════════════════════════
-local tabsFrame = Instance.new("Frame")
-tabsFrame.Size = UDim2.new(1, -20, 0, 200)
-tabsFrame.Position = UDim2.new(0, 10, 0, 70)
-tabsFrame.BackgroundTransparency = 1
-tabsFrame.ZIndex = 7
-tabsFrame.Parent = sidebar
-
-local tabsLayout = Instance.new("UIListLayout")
-tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-tabsLayout.Padding = UDim.new(0, 8)
-tabsLayout.Parent = tabsFrame
-
-local tabs = {}
-local tabContents = {}
-
-local function createTab(name, displayName, layoutOrder, icon)
- local tab = Instance.new("TextButton")
- tab.Name = name .. "Tab"
- tab.Size = UDim2.new(1, 0, 0, 45)
- tab.BackgroundColor3 = COLORS.tabInactive
- tab.BorderSizePixel = 0
- tab.Text = ""
- tab.LayoutOrder = layoutOrder
- tab.AutoButtonColor = false
- tab.ZIndex = 8
- tab.Parent = tabsFrame
- 
- local tabCorner = Instance.new("UICorner")
- tabCorner.CornerRadius = UDim.new(0, 10)
- tabCorner.Parent = tab
- 
- local tabStroke = Instance.new("UIStroke")
- tabStroke.Color = COLORS.border
- tabStroke.Thickness = 1
- tabStroke.Transparency = 0.5
- tabStroke.Parent = tab
- 
- local iconLabel = Instance.new("TextLabel")
- iconLabel.Size = UDim2.new(0, 25, 0, 25)
- iconLabel.Position = UDim2.new(0, 12, 0.5, -12)
- iconLabel.BackgroundTransparency = 1
- iconLabel.Text = icon
- iconLabel.TextColor3 = COLORS.textSecondary
- iconLabel.TextSize = 16
- iconLabel.Font = Enum.Font.GothamBold
- iconLabel.ZIndex = 9
- iconLabel.Parent = tab
- 
- local textLabel = Instance.new("TextLabel")
- textLabel.Size = UDim2.new(1, -50, 1, 0)
- textLabel.Position = UDim2.new(0, 45, 0, 0)
- textLabel.BackgroundTransparency = 1
- textLabel.Text = displayName
- textLabel.TextColor3 = COLORS.textSecondary
- textLabel.TextSize = 14
- textLabel.Font = Enum.Font.GothamBold
- textLabel.TextXAlignment = Enum.TextXAlignment.Left
- textLabel.ZIndex = 9
- textLabel.Parent = tab
- 
- tabs[name] = { button = tab, icon = iconLabel, text = textLabel, stroke = tabStroke }
- return tab
-end
-
-createTab("mov", "MOVEMENT", 1, "M")
-createTab("com", "COMBAT", 2, "C")
-createTab("visual", "VISUAL", 3, "V")
-createTab("gui", "GUI", 4, "G")
-
--- ═══════════════════════════════════════════════════════════════
--- USER PANEL
--- ═══════════════════════════════════════════════════════════════
-local userPanel = Instance.new("Frame")
-userPanel.Size = UDim2.new(1, -20, 0, 55)
-userPanel.Position = UDim2.new(0, 10, 1, -65)
-userPanel.BackgroundColor3 = COLORS.backgroundLight
-userPanel.BorderSizePixel = 0
-userPanel.ZIndex = 7
-userPanel.Parent = sidebar
-
-local userCorner = Instance.new("UICorner")
-userCorner.CornerRadius = UDim.new(0, 10)
-userCorner.Parent = userPanel
-
-local avatar = Instance.new("Frame")
-avatar.Size = UDim2.new(0, 35, 0, 35)
-avatar.Position = UDim2.new(0, 10, 0.5, -17)
-avatar.BackgroundColor3 = COLORS.backgroundDark
-avatar.BorderSizePixel = 0
-avatar.ZIndex = 8
-avatar.Parent = userPanel
-
-local avatarCorner = Instance.new("UICorner")
-avatarCorner.CornerRadius = UDim.new(1, 0)
-avatarCorner.Parent = avatar
-
-local avatarText = Instance.new("TextLabel")
-avatarText.Size = UDim2.new(1, 0, 1, 0)
-avatarText.BackgroundTransparency = 1
-avatarText.Text = string.sub(player.Name, 1, 1):upper()
-avatarText.TextColor3 = COLORS.textPrimary
-avatarText.TextSize = 16
-avatarText.Font = Enum.Font.GothamBold
-avatarText.ZIndex = 9
-avatarText.Parent = avatar
-
-local userName = Instance.new("TextLabel")
-userName.Size = UDim2.new(1, -60, 0, 18)
-userName.Position = UDim2.new(0, 52, 0, 10)
-userName.BackgroundTransparency = 1
-userName.Text = player.Name
-userName.TextColor3 = COLORS.textPrimary
-userName.TextSize = 12
-userName.Font = Enum.Font.GothamBold
-userName.TextXAlignment = Enum.TextXAlignment.Left
-userName.TextTruncate = Enum.TextTruncate.AtEnd
-userName.ZIndex = 8
-userName.Parent = userPanel
-
-local userStatus = Instance.new("TextLabel")
-userStatus.Size = UDim2.new(1, -60, 0, 15)
-userStatus.Position = UDim2.new(0, 52, 0, 28)
-userStatus.BackgroundTransparency = 1
-userStatus.Text = "Online"
-userStatus.TextColor3 = COLORS.accentGreen
-userStatus.TextSize = 10
-userStatus.Font = Enum.Font.Gotham
-userStatus.TextXAlignment = Enum.TextXAlignment.Left
-userStatus.ZIndex = 8
-userStatus.Parent = userPanel
-
--- ═══════════════════════════════════════════════════════════════
--- MAIN AREA
--- ═══════════════════════════════════════════════════════════════
-local mainArea = Instance.new("Frame")
-mainArea.Size = UDim2.new(1, -230, 1, -20)
-mainArea.Position = UDim2.new(0, 225, 0, 10)
-mainArea.BackgroundColor3 = COLORS.backgroundLight
-mainArea.BorderSizePixel = 0
-mainArea.ZIndex = 6
-mainArea.Parent = menuFrame
-
-local mainAreaCorner = Instance.new("UICorner")
-mainAreaCorner.CornerRadius = UDim.new(0, 12)
-mainAreaCorner.Parent = mainArea
-
-local contentHeader = Instance.new("Frame")
-contentHeader.Size = UDim2.new(1, 0, 0, 50)
-contentHeader.BackgroundTransparency = 1
-contentHeader.ZIndex = 7
-contentHeader.Parent = mainArea
-
-local contentTitle = Instance.new("TextLabel")
-contentTitle.Size = UDim2.new(1, -30, 0, 30)
-contentTitle.Position = UDim2.new(0, 15, 0, 10)
-contentTitle.BackgroundTransparency = 1
-contentTitle.Text = "MOVEMENT"
-contentTitle.TextColor3 = COLORS.accent
-contentTitle.TextSize = 18
-contentTitle.Font = Enum.Font.GothamBold
-contentTitle.TextXAlignment = Enum.TextXAlignment.Left
-contentTitle.ZIndex = 8
-contentTitle.Parent = contentHeader
-
-local contentContainer = Instance.new("Frame")
-contentContainer.Size = UDim2.new(1, -20, 1, -60)
-contentContainer.Position = UDim2.new(0, 10, 0, 55)
-contentContainer.BackgroundTransparency = 1
-contentContainer.ZIndex = 7
-contentContainer.Parent = mainArea
-
--- ═══════════════════════════════════════════════════════════════
--- TOGGLE CREATOR
--- ═══════════════════════════════════════════════════════════════
-local function createToggle(parent, name, labelText, description, layoutOrder)
- local toggleContainer = Instance.new("Frame")
- toggleContainer.Name = name .. "Container"
- toggleContainer.Size = UDim2.new(1, 0, 0, 55)
- toggleContainer.BackgroundColor3 = COLORS.background
- toggleContainer.BorderSizePixel = 0
- toggleContainer.LayoutOrder = layoutOrder
- toggleContainer.ZIndex = 8
- toggleContainer.Parent = parent
- 
- local toggleCorner = Instance.new("UICorner")
- toggleCorner.CornerRadius = UDim.new(0, 8)
- toggleCorner.Parent = toggleContainer
- 
- local toggleStroke = Instance.new("UIStroke")
- toggleStroke.Color = COLORS.border
- toggleStroke.Thickness = 1
- toggleStroke.Transparency = 0.3
- toggleStroke.Parent = toggleContainer
-
- local toggleLabel = Instance.new("TextLabel")
- toggleLabel.Size = UDim2.new(0.7, 0, 0, 20)
- toggleLabel.Position = UDim2.new(0, 15, 0, 10)
- toggleLabel.BackgroundTransparency = 1
- toggleLabel.Text = labelText
- toggleLabel.TextColor3 = COLORS.textPrimary
- toggleLabel.TextSize = 13
- toggleLabel.Font = Enum.Font.GothamBold
- toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
- toggleLabel.ZIndex = 9
- toggleLabel.Parent = toggleContainer
- 
- local descLabel = Instance.new("TextLabel")
- descLabel.Size = UDim2.new(0.7, 0, 0, 16)
- descLabel.Position = UDim2.new(0, 15, 0, 30)
- descLabel.BackgroundTransparency = 1
- descLabel.Text = description
- descLabel.TextColor3 = COLORS.textMuted
- descLabel.TextSize = 10
- descLabel.Font = Enum.Font.Gotham
- descLabel.TextXAlignment = Enum.TextXAlignment.Left
- descLabel.ZIndex = 9
- descLabel.Parent = toggleContainer
-
- local toggleBackground = Instance.new("Frame")
- toggleBackground.Size = UDim2.new(0, 46, 0, 24)
- toggleBackground.Position = UDim2.new(1, -60, 0.5, -12)
- toggleBackground.BackgroundColor3 = COLORS.toggleOff
- toggleBackground.BorderSizePixel = 0
- toggleBackground.ZIndex = 9
- toggleBackground.Parent = toggleContainer
-
- local toggleBgCorner = Instance.new("UICorner")
- toggleBgCorner.CornerRadius = UDim.new(1, 0)
- toggleBgCorner.Parent = toggleBackground
-
- local toggleCircle = Instance.new("Frame")
- toggleCircle.Size = UDim2.new(0, 18, 0, 18)
- toggleCircle.Position = UDim2.new(0, 3, 0.5, -9)
- toggleCircle.BackgroundColor3 = COLORS.textSecondary
- toggleCircle.BorderSizePixel = 0
- toggleCircle.ZIndex = 10
- toggleCircle.Parent = toggleBackground
-
- local toggleCircleCorner = Instance.new("UICorner")
- toggleCircleCorner.CornerRadius = UDim.new(1, 0)
- toggleCircleCorner.Parent = toggleCircle
-
- local toggleButton = Instance.new("TextButton")
- toggleButton.Size = UDim2.new(1, 0, 1, 0)
- toggleButton.BackgroundTransparency = 1
- toggleButton.Text = ""
- toggleButton.ZIndex = 11
- toggleButton.Parent = toggleContainer
-
- return { container = toggleContainer, background = toggleBackground, circle = toggleCircle, button = toggleButton }
-end
-
--- ═══════════════════════════════════════════════════════════════
--- SELECTOR CREATOR
--- ═══════════════════════════════════════════════════════════════
-local function createSelector(parent, name, labelText, options, layoutOrder)
- local selectorContainer = Instance.new("Frame")
- selectorContainer.Name = name .. "Container"
- selectorContainer.Size = UDim2.new(1, 0, 0, 85)
- selectorContainer.BackgroundColor3 = COLORS.background
- selectorContainer.BorderSizePixel = 0
- selectorContainer.LayoutOrder = layoutOrder
- selectorContainer.ZIndex = 8
- selectorContainer.Parent = parent
- 
- local selectorCorner = Instance.new("UICorner")
- selectorCorner.CornerRadius = UDim.new(0, 8)
- selectorCorner.Parent = selectorContainer
-
- local selectorLabel = Instance.new("TextLabel")
- selectorLabel.Size = UDim2.new(1, -20, 0, 22)
- selectorLabel.Position = UDim2.new(0, 15, 0, 10)
- selectorLabel.BackgroundTransparency = 1
- selectorLabel.Text = labelText
- selectorLabel.TextColor3 = COLORS.textPrimary
- selectorLabel.TextSize = 13
- selectorLabel.Font = Enum.Font.GothamBold
- selectorLabel.TextXAlignment = Enum.TextXAlignment.Left
- selectorLabel.ZIndex = 9
- selectorLabel.Parent = selectorContainer
- 
- local optionsFrame = Instance.new("Frame")
- optionsFrame.Size = UDim2.new(1, -20, 0, 36)
- optionsFrame.Position = UDim2.new(0, 10, 0, 40)
- optionsFrame.BackgroundTransparency = 1
- optionsFrame.ZIndex = 9
- optionsFrame.Parent = selectorContainer
- 
- local optionsLayout = Instance.new("UIListLayout")
- optionsLayout.FillDirection = Enum.FillDirection.Horizontal
- optionsLayout.Padding = UDim.new(0, 8)
- optionsLayout.Parent = optionsFrame
- 
- local buttons = {}
- for i, option in ipairs(options) do
-  local optionBtn = Instance.new("TextButton")
-  optionBtn.Name = option.value .. "Option"
-  optionBtn.Size = UDim2.new(0, 85, 1, 0)
-  optionBtn.BackgroundColor3 = COLORS.backgroundDark
-  optionBtn.BorderSizePixel = 0
-  optionBtn.Text = option.label
-  optionBtn.TextColor3 = COLORS.textSecondary
-  optionBtn.TextSize = 12
-  optionBtn.Font = Enum.Font.GothamBold
-  optionBtn.LayoutOrder = i
-  optionBtn.AutoButtonColor = false
-  optionBtn.ZIndex = 10
-  optionBtn.Parent = optionsFrame
-  
-  local optionCorner = Instance.new("UICorner")
-  optionCorner.CornerRadius = UDim.new(0, 6)
-  optionCorner.Parent = optionBtn
-  
-  local optionStroke = Instance.new("UIStroke")
-  optionStroke.Color = COLORS.border
-  optionStroke.Thickness = 1
-  optionStroke.Transparency = 0.3
-  optionStroke.Parent = optionBtn
-  
-  buttons[option.value] = { button = optionBtn, stroke = optionStroke }
- end
- 
- return { container = selectorContainer, buttons = buttons }
-end
-
--- ═══════════════════════════════════════════════════════════════
--- TAB CONTENTS
--- ═══════════════════════════════════════════════════════════════
-local movContent = Instance.new("Frame")
-movContent.Name = "MovContent"
-movContent.Size = UDim2.new(1, 0, 1, 0)
-movContent.BackgroundTransparency = 1
-movContent.Visible = true
-movContent.ZIndex = 8
-movContent.Parent = contentContainer
-
-local movLayout = Instance.new("UIListLayout")
-movLayout.SortOrder = Enum.SortOrder.LayoutOrder
-movLayout.Padding = UDim.new(0, 8)
-movLayout.Parent = movContent
-
-local flightToggle = createToggle(movContent, "Flight", "Magic Flight", "Improved flight with tilt and acceleration", 1)
-local resolverToggle = createToggle(movContent, "Resolver", "Magic Resolver", "Auto-dodge players/NPCs (12 studs)", 2)
-
-tabContents["mov"] = movContent
-
-local comContent = Instance.new("Frame")
-comContent.Name = "ComContent"
-comContent.Size = UDim2.new(1, 0, 1, 0)
-comContent.BackgroundTransparency = 1
-comContent.Visible = false
-comContent.ZIndex = 8
-comContent.Parent = contentContainer
-
-local comLayout = Instance.new("UIListLayout")
-comLayout.SortOrder = Enum.SortOrder.LayoutOrder
-comLayout.Padding = UDim.new(0, 8)
-comLayout.Parent = comContent
-
-local comPlaceholder = Instance.new("TextLabel")
-comPlaceholder.Size = UDim2.new(1, 0, 0, 50)
-comPlaceholder.BackgroundColor3 = COLORS.background
-comPlaceholder.Text = "Combat functions coming soon..."
-comPlaceholder.TextColor3 = COLORS.textMuted
-comPlaceholder.TextSize = 12
-comPlaceholder.Font = Enum.Font.Gotham
-comPlaceholder.ZIndex = 9
-comPlaceholder.Parent = comContent
-
-local comCorner = Instance.new("UICorner")
-comCorner.CornerRadius = UDim.new(0, 8)
-comCorner.Parent = comPlaceholder
-
-tabContents["com"] = comContent
-
-local visualContent = Instance.new("Frame")
-visualContent.Name = "VisualContent"
-visualContent.Size = UDim2.new(1, 0, 1, 0)
-visualContent.BackgroundTransparency = 1
-visualContent.Visible = false
-visualContent.ZIndex = 8
-visualContent.Parent = contentContainer
-
-local visualLayout = Instance.new("UIListLayout")
-visualLayout.SortOrder = Enum.SortOrder.LayoutOrder
-visualLayout.Padding = UDim.new(0, 8)
-visualLayout.Parent = visualContent
-
-local visualPlaceholder = Instance.new("TextLabel")
-visualPlaceholder.Size = UDim2.new(1, 0, 0, 50)
-visualPlaceholder.BackgroundColor3 = COLORS.background
-visualPlaceholder.Text = "Visual functions coming soon..."
-visualPlaceholder.TextColor3 = COLORS.textMuted
-visualPlaceholder.TextSize = 12
-visualPlaceholder.Font = Enum.Font.Gotham
-visualPlaceholder.ZIndex = 9
-visualPlaceholder.Parent = visualContent
-
-local visualCorner = Instance.new("UICorner")
-visualCorner.CornerRadius = UDim.new(0, 8)
-visualCorner.Parent = visualPlaceholder
-
-tabContents["visual"] = visualContent
-
-local guiContent = Instance.new("Frame")
-guiContent.Name = "GuiContent"
-guiContent.Size = UDim2.new(1, 0, 1, 0)
-guiContent.BackgroundTransparency = 1
-guiContent.Visible = false
-guiContent.ZIndex = 8
-guiContent.Parent = contentContainer
-
-local guiLayout = Instance.new("UIListLayout")
-guiLayout.SortOrder = Enum.SortOrder.LayoutOrder
-guiLayout.Padding = UDim.new(0, 8)
-guiLayout.Parent = guiContent
-
-local guiStyleSelector = createSelector(guiContent, "GuiStyle", "GUI Style", {
- {label = "Platon", value = "platon"},{label = "CS:GO", value = "cs"},
- {label = "Panel", value = "panel"}
-}, 1)
-
-tabContents["gui"] = guiContent
-
--- ═══════════════════════════════════════════════════════════════
--- UI FUNCTIONS
--- ═══════════════════════════════════════════════════════════════
-local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
-local tabTitles = {
- mov = "MOVEMENT",
- com = "COMBAT",
- visual = "VISUAL",
- gui = "GUI SETTINGS"
-}
-
-local function switchTab(tabName)
- if currentTab == tabName then return end
- currentTab = tabName
- contentTitle.Text = tabTitles[tabName] or tabName:upper()
- 
- for name, tab in pairs(tabs) do
-  local isActive = (name == tabName)
-  TweenService:Create(tab.button, tweenInfoFast, {
-   BackgroundColor3 = isActive and COLORS.accent or COLORS.tabInactive
-  }):Play()
-  TweenService:Create(tab.icon, tweenInfoFast, {
-   TextColor3 = isActive and COLORS.textPrimary or COLORS.textSecondary
-  }):Play()
-  TweenService:Create(tab.text, tweenInfoFast, {
-   TextColor3 = isActive and COLORS.textPrimary or COLORS.textSecondary
-  }):Play()
- end
- 
- for name, content in pairs(tabContents) do
-  content.Visible = (name == tabName)
- end
-end
-
-for name, tab in pairs(tabs) do
- tab.button.MouseButton1Click:Connect(function()
-  switchTab(name)
- end)
-end
-
-switchTab("mov")
-
-local function openMenu()
- isMenuOpen = true
- animatedBgFrame.Visible = true
- TweenService:Create(animatedBgFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0.4}):Play()
- TweenService:Create(menuFrame, tweenInfo, {BackgroundTransparency = 0.05}):Play()
- TweenService:Create(menuFrameStroke, tweenInfoFast, {Transparency = 0.2}):Play()
-end
-
-local function closeMenu()
- isMenuOpen = false
- TweenService:Create(animatedBgFrame, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play()
- local closeTween = TweenService:Create(menuFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-  BackgroundTransparency = 1
- })
- TweenService:Create(menuFrameStroke, tweenInfoFast, {Transparency = 1}):Play()
- closeTween:Play()
- closeTween.Completed:Connect(function()
-  if not isMenuOpen then
-   animatedBgFrame.Visible = false
-  end
- end)
-end
-
-local function toggleMenu()
- if isMenuOpen then closeMenu() else openMenu() end
-end
-
-local function updateToggleVisual(toggle, enabled)
- TweenService:Create(toggle.background, tweenInfoFast, {
-  BackgroundColor3 = enabled and COLORS.toggleOn or COLORS.toggleOff
- }):Play()
- TweenService:Create(toggle.circle, tweenInfoFast, {
-  Position = enabled and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
-  BackgroundColor3 = enabled and COLORS.textPrimary or COLORS.textSecondary
- }):Play()
-end
-
-local function updateGuiStyleSelector(selectedStyle)
- for value, btn in pairs(guiStyleSelector.buttons) do
-  local isSelected = (value == selectedStyle)
-  TweenService:Create(btn.button, tweenInfoFast, {
-   BackgroundColor3 = isSelected and COLORS.accent or COLORS.backgroundDark,
-   TextColor3 = isSelected and COLORS.textPrimary or COLORS.textSecondary
-  }):Play()
- end
-end
-
-for value, btn in pairs(guiStyleSelector.buttons) do
- btn.button.MouseButton1Click:Connect(function()
-  setColorScheme(value)
-  updateGuiStyleSelector(value)
-  showNotification("GUI Style", "Changed to " .. value:upper(), "info")
- end)
-end
-
-updateGuiStyleSelector(currentGuiStyle)
-
--- ═══════════════════════════════════════════════════════════════
--- MAGIC RESOLVER
--- ═══════════════════════════════════════════════════════════════
-local function checkNearbyEntities()
- if not rootPart then return false, math.huge end
- 
- local myPosition = rootPart.Position
- local closestDistance = math.huge
- local foundEntity = false
- 
- for _, otherPlayer in ipairs(Players:GetPlayers()) do
-  if otherPlayer ~= player and otherPlayer.Character then
-   local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
-   if otherRoot then
-    local dist = (otherRoot.Position - myPosition).Magnitude
-    if dist < closestDistance then
-     closestDistance = dist
-     foundEntity = true
+local function switchTab(name)
+    activeTab=name
+    for _,n in ipairs(TABS) do
+        local isA=(n==name)
+        local d=tabBtns[n]
+        tw(d.btn,.15,{BackgroundTransparency=isA and 0.82 or 1,
+            BackgroundColor3=isA and Cfg.BG3 or Cfg.BG})
+        tw(d.icon,.15,{TextColor3=isA and Cfg.X_BLUE or Cfg.TextDim})
+        tw(d.txt,.15,{TextColor3=isA and Cfg.White or Cfg.TextDim})
+        tw(tabIndics[n],.15,{BackgroundTransparency=isA and 0 or 1})
+        tabPages[n].Visible=isA
     end
-   end
-  end
- end
- 
- for _, desc in ipairs(workspace:GetDescendants()) do
-  if desc:IsA("Humanoid") and desc ~= humanoid then
-   local npcRoot = desc.Parent:FindFirstChild("HumanoidRootPart")
-   if npcRoot then
-    local dist = (npcRoot.Position - myPosition).Magnitude
-    if dist < closestDistance then
-     closestDistance = dist
-     foundEntity = true
-    end
-   end
-  end
- end
- 
- return foundEntity, closestDistance
+end
+for _,name in ipairs(TABS) do
+    tabBtns[name].btn.MouseButton1Click:Connect(function() switchTab(name) end)
+    tabBtns[name].btn.MouseEnter:Connect(function()
+        if activeTab~=name then tw(tabBtns[name].txt,.1,{TextColor3=Cfg.TextMid}) end
+    end)
+    tabBtns[name].btn.MouseLeave:Connect(function()
+        if activeTab~=name then tw(tabBtns[name].txt,.1,{TextColor3=Cfg.TextDim}) end
+    end)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- FLIGHT SYSTEM
--- ═══════════════════════════════════════════════════════════════
-local function enableFlight()
- if isFlying then return end
- isFlying = true
- hoverTime = 0
- currentSpeed = 0
- tiltAngle = 0
- breathePhase = 0
- 
- nextRandomTime = 0
- randomOffset = 0
- targetRandomOffset = 0
- microDropTimer = 0
- microDropOffset = 0
- resolverTargetHeight = 0
- resolverCurrentBoost = 1
- 
- bodyGyro = Instance.new("BodyGyro")
- bodyGyro.MaxTorque = Vector3.new(400000, 400000, 400000)
- bodyGyro.P = 15000
- bodyGyro.D = 800
- bodyGyro.Parent = rootPart
- 
- humanoid.PlatformStand = true
- 
- flightConnection = RunService.Heartbeat:Connect(function(deltaTime)
-  if not isFlying or not rootPart then return end
-  
-  local targetResolverHeight = 0
-  local targetSpeedBoost = 1
-  
-  if isMagicResolverEnabled then
-   local foundEntity, closestDistance = checkNearbyEntities()
-   if foundEntity and closestDistance < RESOLVER_DETECT_RADIUS then
-    local urgency = 1 - (closestDistance / RESOLVER_DETECT_RADIUS)
-    targetResolverHeight = RESOLVER_LIFT_HEIGHT * urgency
-    targetSpeedBoost = 1 + (RESOLVER_SPEED_BOOST - 1) * urgency
-   end
-  end
-  
-  resolverTargetHeight = resolverTargetHeight + (targetResolverHeight - resolverTargetHeight) * 0.04
-  resolverCurrentBoost = resolverCurrentBoost + (targetSpeedBoost - resolverCurrentBoost) * 0.06
-  
-  local camera = workspace.CurrentCamera
-  local cameraLook = camera.CFrame.LookVector
-  local cameraRight = camera.CFrame.RightVector
-  local moveDirection = humanoid.MoveDirection
-  local horizontalMove = Vector3.zero
-  local isMoving = moveDirection.Magnitude > 0.1
-  
-  if isMoving then
-   local flatLook = Vector3.new(cameraLook.X, 0, cameraLook.Z).Unit
-   local flatRight = Vector3.new(cameraRight.X, 0, cameraRight.Z).Unit
-   horizontalMove = (flatLook * moveDirection.Z + flatRight * moveDirection.X)
-   targetSpeed = env.FlightSpeed * resolverCurrentBoost
-   currentSpeed = currentSpeed + (targetSpeed - currentSpeed) * ACCELERATION
-  else
-   currentSpeed = currentSpeed * (1 - DECELERATION)
-   if currentSpeed < 0.1 then currentSpeed = 0 end
-  end
-  
-  horizontalMove = horizontalMove * currentSpeed
-  
-  targetTiltAngle = isMoving and TILT_AMOUNT * currentSpeed / env.FlightSpeed or 0
-  tiltAngle = tiltAngle + (targetTiltAngle - tiltAngle) * 0.08
-  
-  local targetVertical = 0
-  if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-   targetVertical = VERTICAL_SPEED * env.FlightSpeed
-  elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-   targetVertical = -VERTICAL_SPEED * env.FlightSpeed
-  end
-  
-  if resolverTargetHeight > 0.1 then
-   targetVertical = targetVertical + resolverTargetHeight * 3
-  end
-  
-  verticalVelocity = verticalVelocity + (targetVertical - verticalVelocity) * 0.12
-  
-  hoverTime = hoverTime + deltaTime
-  breathePhase = breathePhase + deltaTime * HOVER_FREQUENCY * math.pi
-  local baseHover = math.sin(breathePhase) * HOVER_AMPLITUDE
-  
-  nextRandomTime = nextRandomTime - deltaTime
-  if nextRandomTime <= 0 then
-   nextRandomTime = 0.25 + math.random() * 0.4
-   targetRandomOffset = (math.random() - 0.5) * 0.12
-  end
-  randomOffset = randomOffset + (targetRandomOffset - randomOffset) * 0.06
-  
-  microDropTimer = microDropTimer - deltaTime
-  if microDropTimer <= 0 then
-   microDropTimer = 1.2 + math.random() * 2.5
-   microDropOffset = -0.1 - math.random() * 0.08
-  end
-  microDropOffset = microDropOffset + (0 - microDropOffset) * 0.1
-  
-  windEffect = math.sin(hoverTime * 3.7) * math.cos(hoverTime * 2.3) * 0.025
-  local hoverOffset = baseHover + randomOffset + microDropOffset + windEffect
-  
-  local currentPos = rootPart.Position
-  local resolverLift = resolverTargetHeight > 0.5 and resolverTargetHeight * 0.6 or 0
-  local velocity = horizontalMove + Vector3.new(0, verticalVelocity + hoverOffset + resolverLift, 0)
-  local targetPos = currentPos + velocity * deltaTime
-  local targetCFrame = CFrame.new(targetPos)
-  
-  if horizontalMove.Magnitude > 0.5 then
-   local lookAt = currentPos + horizontalMove.Unit
-   local baseCFrame = CFrame.new(targetPos, Vector3.new(lookAt.X, targetPos.Y, lookAt.Z))
-   targetCFrame = baseCFrame * CFrame.Angles(tiltAngle, 0, 0)
-   bodyGyro.CFrame = targetCFrame
-  else
-   bodyGyro.CFrame = rootPart.CFrame
-  end
-  
-  rootPart.CFrame = rootPart.CFrame:Lerp(targetCFrame, LERP_SPEED)
-  rootPart.AssemblyLinearVelocity = Vector3.zero
-  rootPart.AssemblyAngularVelocity = Vector3.zero
- end)
- 
- updateToggleVisual(flightToggle, true)
- showNotification("Magic Flight", "Flight mode activated", "success")
-end
+-- ══════════════════════════════════════════════
+--  ЭЛЕМЕНТЫ СТРАНИЦ — CS СТИЛЬ
+-- ══════════════════════════════════════════════
 
-local function disableFlight()
- if not isFlying then return end
- isFlying = false
- verticalVelocity = 0
- currentSpeed = 0
- 
- if flightConnection then
-  flightConnection:Disconnect()
-  flightConnection = nil
- end
- 
- if bodyGyro then
-  bodyGyro:Destroy()
-  bodyGyro = nil
- end
- 
- if humanoid then
-  humanoid.PlatformStand = false
- end
- 
- updateToggleVisual(flightToggle, false)
- showNotification("Magic Flight", "Flight mode deactivated", "warning")
-end
-
-local function toggleFlight()
- if isFlying then disableFlight() else enableFlight() end
-end
-
-local function toggleMagicResolver()
- isMagicResolverEnabled = not isMagicResolverEnabled
- updateToggleVisual(resolverToggle, isMagicResolverEnabled)
- showNotification("Magic Resolver", isMagicResolverEnabled and "Auto-dodge ON" or "Auto-dodge OFF", isMagicResolverEnabled and "success" or "warning")
- if not isMagicResolverEnabled then
-  resolverTargetHeight = 0
-  resolverCurrentBoost = 1
- end
-end
-
--- ═══════════════════════════════════════════════════════════════
--- EVENTS
--- ═══════════════════════════════════════════════════════════════
-menuButton.MouseButton1Click:Connect(toggleMenu)
-flightToggle.button.MouseButton1Click:Connect(toggleFlight)
-resolverToggle.button.MouseButton1Click:Connect(toggleMagicResolver)
-
-menuButton.MouseEnter:Connect(function()
- TweenService:Create(menuButtonStroke, tweenInfoFast, {Color = COLORS.accent}):Play()
- TweenService:Create(menuButton, tweenInfoFast, {Size = UDim2.new(0, 60, 0, 60)}):Play()
-end)
-
-menuButton.MouseLeave:Connect(function()
- TweenService:Create(menuButtonStroke, tweenInfoFast, {Color = COLORS.border}):Play()
- TweenService:Create(menuButton, tweenInfoFast, {Size = UDim2.new(0, 55, 0, 55)}):Play()
-end)
-
--- Background animation
-local startTime = tick()
-RunService.Heartbeat:Connect(function()
- if not animatedBgFrame.Visible then return end
- local time = tick() - startTime
- for i, spot in ipairs(glowSpots) do
-  spot.Position = UDim2.new(0.15 + i * 0.2, math.sin(time * 0.5 + i * 2) * 80, 0.2 + i * 0.15, math.cos(time * 0.4 + i * 1.5) * 60)
- end
-end)
-
--- Character handling
-local function onCharacterAdded(newCharacter)
- character = newCharacter
- humanoid = character:WaitForChild("Humanoid", 10)
- rootPart = character:WaitForChild("HumanoidRootPart", 10)
- 
- if humanoid then
-  isFlying = false
-  updateToggleVisual(flightToggle, false)
-  
-  humanoid.Died:Connect(function()
-   disableFlight()
-   closeMenu()
-  end)
- end
-end
-
-player.CharacterAdded:Connect(onCharacterAdded)
-
-if humanoid then
- humanoid.Died:Connect(function()
-  disableFlight()
-  closeMenu()
- end)
-end
-
--- Keybind
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
- if gameProcessed then return end
- if input.KeyCode == Enum.KeyCode.RightShift then
-  toggleMenu()
- end
-end)
-
--- ═══════════════════════════════════════════════════════════════
--- SHOW READY
--- ═══════════════════════════════════════════════════════════════
-taskLib.wait(0.2)
-showNotification("XCLIENT", "v4.2 ready! Press RightShift or click X", "success")
-print("[XCLIENT] v4.2 loaded successfully")
+-- Заголовок секции
+local function csSectionLabel(page, text, order)
+    local wrap=Instance.new("Framely")
