@@ -1,6 +1,5 @@
 --========================================================--
--- X-CLIENT PREMIUM FRAMEWORK (FOR DELTA)
--- UI + LOADING + MAGIC FLY + SMART DODGE
+-- X-CLIENT FIX (STABILITY UPDATE)
 --========================================================--
 
 local Players = game:GetService("Players")
@@ -12,290 +11,209 @@ local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
 
---========================================================--
--- CONFIGURATION
---========================================================--
 local Config = {
 	Accent = Color3.fromRGB(160, 210, 255),
 	Bg = Color3.fromRGB(10, 10, 12),
 	Bg2 = Color3.fromRGB(20, 20, 25),
-	IconID = "rbxassetid://1000056272", -- ВСТАВЬ СВОЙ ID ТУТ
+	-- ПОПРОБУЙ ЭТОТ ID (Если твой не работает, это стандартный щит)
+	IconID = "rbxassetid://6031068433", 
 	WindowSize = UDim2.new(0, 600, 0, 400)
 }
 
-local Modules = {
-	Fly = false,
-	Dodge = false
-}
+local Modules = { Fly = false, Dodge = false }
 
---========================================================--
--- UTILS
---========================================================--
+-- БЕЗОПАСНЫЙ ПОЛУЧАТЕЛЬ ПЕРСОНАЖА
+local function getChar()
+	local c = player.Character
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	local hum = c and c:FindFirstChild("Humanoid")
+	return c, hrp, hum
+end
+
+-- СИСТЕМА ПЕРЕТАСКИВАНИЯ
 local function MakeDraggable(obj)
 	local dragging, dragInput, dragStart, startPos
 	obj.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 			dragging = true; dragStart = input.Position; startPos = obj.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
-		end
-	end)
-	obj.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
 		end
 	end)
 	UserInputService.InputChanged:Connect(function(input)
-		if input == dragInput and dragging then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - dragStart
 			obj.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
 		end
 	end)
 end
 
 --========================================================--
--- 1. LOADING SCREEN
+-- ГЕНЕРАЦИЯ ИНТЕРФЕЙСА
 --========================================================--
-local Loader = Instance.new("ScreenGui", CoreGui)
-Loader.IgnoreGuiInset = true
 
+local Loader = Instance.new("ScreenGui", CoreGui)
+local MainGui = Instance.new("ScreenGui", CoreGui)
+local FloatIcon = Instance.new("ScreenGui", CoreGui)
+MainGui.Enabled = false
+FloatIcon.Enabled = false
+
+-- LOADING SCREEN
 local LFrame = Instance.new("Frame", Loader)
 LFrame.Size = UDim2.new(1,0,1,0)
 LFrame.BackgroundColor3 = Config.Bg
+LFrame.ZIndex = 10
 
 local LMain = Instance.new("Frame", LFrame)
-LMain.Size = UDim2.new(0,400,0,400)
-LMain.Position = UDim2.new(0.5,-200,0.5,-200)
+LMain.Size = UDim2.new(0,400,0,300)
+LMain.Position = UDim2.new(0.5,-200,0.5,-150)
 LMain.BackgroundTransparency = 1
 
 local LLogo = Instance.new("ImageLabel", LMain)
-LLogo.Size = UDim2.new(0,100,0,100)
-LLogo.Position = UDim2.new(0.5,-50,0.2,0)
+LLogo.Size = UDim2.new(0,80,0,80)
+LLogo.Position = UDim2.new(0.5,-40,0.1,0)
 LLogo.Image = Config.IconID
 LLogo.ImageColor3 = Config.Accent
 LLogo.BackgroundTransparency = 1
 
 local LTitle = Instance.new("TextLabel", LMain)
-LTitle.Size = UDim2.new(1,0,0,50)
+LTitle.Size = UDim2.new(1,0,0,40)
 LTitle.Position = UDim2.new(0,0,0.45,0)
 LTitle.Text = "X-CLIENT"
 LTitle.Font = Enum.Font.GothamBold
-LTitle.TextSize = 32
 LTitle.TextColor3 = Color3.new(1,1,1)
+LTitle.TextSize = 30
 LTitle.BackgroundTransparency = 1
 
-local LPercent = Instance.new("TextLabel", LMain)
-LPercent.Size = UDim2.new(1,0,0,30)
-LPercent.Position = UDim2.new(0,0,0.58,0)
-LPercent.Text = "0%"
-LPercent.TextColor3 = Config.Accent
-LPercent.Font = Enum.Font.GothamMedium
-LPercent.TextSize = 18
-LPercent.BackgroundTransparency = 1
-
 local LBarBg = Instance.new("Frame", LMain)
-LBarBg.Size = UDim2.new(0,260,0,4)
-LBarBg.Position = UDim2.new(0.5,-130,0.68,0)
-LBarBg.BackgroundColor3 = Color3.fromRGB(30,30,35)
+LBarBg.Size = UDim2.new(0,250,0,4)
+LBarBg.Position = UDim2.new(0.5,-125,0.65,0)
+LBarBg.BackgroundColor3 = Color3.fromRGB(35,35,40)
 LBarBg.BorderSizePixel = 0
 
 local LBar = Instance.new("Frame", LBarBg)
 LBar.Size = UDim2.new(0,0,1,0)
 LBar.BackgroundColor3 = Config.Accent
 LBar.BorderSizePixel = 0
-Instance.new("UICorner", LBarBg)
-Instance.new("UICorner", LBar)
 
---========================================================--
--- 2. MAIN GUI (MINECRAFT STYLE)
---========================================================--
-local MainGui = Instance.new("ScreenGui", CoreGui)
-MainGui.Enabled = false
-
-local Blur = Instance.new("BlurEffect", Lighting)
-Blur.Size = 0
-
+-- MAIN MENU
 local MainFrame = Instance.new("Frame", MainGui)
 MainFrame.Size = Config.WindowSize
 MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
 MainFrame.BackgroundColor3 = Config.Bg2
-MainFrame.BorderSizePixel = 0
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0,12)
+Instance.new("UICorner", MainFrame)
 MakeDraggable(MainFrame)
 
 -- Sidebar
 local Sidebar = Instance.new("Frame", MainFrame)
-Sidebar.Size = UDim2.new(0, 180, 1, 0)
+Sidebar.Size = UDim2.new(0, 170, 1, 0)
 Sidebar.BackgroundColor3 = Config.Bg
-Sidebar.BorderSizePixel = 0
-Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0,12)
+Instance.new("UICorner", Sidebar)
 
-local SidebarLogo = Instance.new("ImageLabel", Sidebar)
-SidebarLogo.Size = UDim2.new(0, 40, 0, 40)
-SidebarLogo.Position = UDim2.new(0, 15, 0, 15)
-SidebarLogo.Image = Config.IconID
-SidebarLogo.ImageColor3 = Config.Accent
-SidebarLogo.BackgroundTransparency = 1
+local SLogo = Instance.new("ImageLabel", Sidebar)
+SLogo.Size = UDim2.new(0,35,0,35)
+SLogo.Position = UDim2.new(0,15,0,15)
+SLogo.Image = Config.IconID
+SLogo.ImageColor3 = Config.Accent
+SLogo.BackgroundTransparency = 1
 
--- Categories Container
-local CatHolder = Instance.new("Frame", Sidebar)
-CatHolder.Size = UDim2.new(1, -20, 0, 200)
-CatHolder.Position = UDim2.new(0, 10, 0, 70)
-CatHolder.BackgroundTransparency = 1
-local CatList = Instance.new("UIListLayout", CatHolder)
-CatList.Padding = UDim.new(0,5)
-
-local function CreateCat(name)
-	local b = Instance.new("TextButton", CatHolder)
-	b.Size = UDim2.new(1, 0, 0, 35)
-	b.BackgroundColor3 = Color3.fromRGB(30,30,35)
-	b.Text = name:upper()
-	b.Font = Enum.Font.GothamMedium
-	b.TextSize = 13
-	b.TextColor3 = Color3.new(0.8,0.8,0.8)
-	Instance.new("UICorner", b)
-end
-
-for _, v in pairs({"Combat", "Movement", "Visuals", "Misc"}) do CreateCat(v) end
-
--- User Panel
-local User = Instance.new("Frame", Sidebar)
-User.Size = UDim2.new(1, -20, 0, 50)
-User.Position = UDim2.new(0, 10, 1, -60)
-User.BackgroundColor3 = Color3.fromRGB(30,30,35)
-Instance.new("UICorner", User)
-
-local Avatar = Instance.new("ImageLabel", User)
-Avatar.Size = UDim2.new(0, 30, 0, 30)
-Avatar.Position = UDim2.new(0, 10, 0.5, -15)
-Avatar.Image = "rbxthumb://type=AvatarHeadShot&id="..player.UserId.."&w=150&h=150"
-Avatar.BackgroundTransparency = 1
-Instance.new("UICorner", Avatar).CornerRadius = UDim.new(1,0)
-
-local Username = Instance.new("TextLabel", User)
-Username.Size = UDim2.new(1, -50, 1, 0)
-Username.Position = UDim2.new(0, 45, 0, 0)
-Username.Text = player.DisplayName
-Username.Font = Enum.Font.GothamBold
-Username.TextColor3 = Color3.new(1,1,1)
-Username.TextSize = 12
-Username.XAlignment = Enum.TextXAlignment.Left
-Username.BackgroundTransparency = 1
-
--- Content Area (Modules)
-local Content = Instance.new("Frame", MainFrame)
-Content.Position = UDim2.new(0, 190, 0, 20)
-Content.Size = UDim2.new(1, -210, 1, -40)
-Content.BackgroundTransparency = 1
-
-local ModList = Instance.new("UIListLayout", Content)
-ModList.Padding = UDim.new(0,10)
-
-local function CreateToggle(name, callback)
-	local b = Instance.new("TextButton", Content)
-	b.Size = UDim2.new(1, 0, 0, 45)
-	b.BackgroundColor3 = Config.Bg
-	b.Text = "  " .. name
-	b.Font = Enum.Font.GothamBold
-	b.TextColor3 = Color3.new(1,1,1)
-	b.TextSize = 14
-	b.TextXAlignment = Enum.TextXAlignment.Left
-	Instance.new("UICorner", b)
-	
-	local status = Instance.new("Frame", b)
-	status.Size = UDim2.new(0, 10, 0, 10)
-	status.Position = UDim2.new(1, -25, 0.5, -5)
-	status.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-	Instance.new("UICorner", status).CornerRadius = UDim.new(1,0)
-
-	b.MouseButton1Click:Connect(function()
-		local active = callback()
-		TweenService:Create(status, TweenInfo.new(0.3), {BackgroundColor3 = active and Color3.fromRGB(50, 255, 100) or Color3.fromRGB(255, 50, 50)}):Play()
-	end)
-end
-
-CreateToggle("Magic Fly [F]", function() Modules.Fly = not Modules.Fly return Modules.Fly end)
-CreateToggle("Smart Dodge [Q]", function() Modules.Dodge = not Modules.Dodge return Modules.Dodge end)
-
---========================================================--
--- 3. FLOATING ICON
---========================================================--
-local FloatIcon = Instance.new("ScreenGui", CoreGui)
+-- Кнопка-иконка (Floating)
 local FloatBtn = Instance.new("ImageButton", FloatIcon)
-FloatBtn.Size = UDim2.new(0, 60, 0, 60)
-FloatBtn.Position = UDim2.new(0, 20, 0.2, 0)
+FloatBtn.Size = UDim2.new(0, 55, 0, 55)
+FloatBtn.Position = UDim2.new(0, 20, 0.15, 0)
 FloatBtn.BackgroundColor3 = Config.Bg
 FloatBtn.Image = Config.IconID
 FloatBtn.ImageColor3 = Config.Accent
-Instance.new("UICorner", FloatBtn).CornerRadius = UDim.new(0,12)
-Instance.new("UIStroke", FloatBtn).Color = Config.Accent
-FloatIcon.Enabled = false
+Instance.new("UICorner", FloatBtn).CornerRadius = UDim.new(0,10)
+local Stroke = Instance.new("UIStroke", FloatBtn)
+Stroke.Color = Config.Accent; Stroke.Thickness = 2
 MakeDraggable(FloatBtn)
 
 FloatBtn.MouseButton1Click:Connect(function()
 	MainGui.Enabled = not MainGui.Enabled
-	TweenService:Create(Blur, TweenInfo.new(0.5), {Size = MainGui.Enabled and 20 or 0}):Play()
 end)
 
 --========================================================--
--- CORE LOGIC (FLY/DODGE)
+-- ФУНКЦИОНАЛ
 --========================================================--
-local function getChar()
-	local c = player.Character
-	if not c then return nil end
-	return c, c:FindFirstChild("HumanoidRootPart"), c:FindFirstChild("Humanoid")
+
+local Content = Instance.new("ScrollingFrame", MainFrame)
+Content.Position = UDim2.new(0, 180, 0, 20)
+Content.Size = UDim2.new(1, -200, 1, -40)
+Content.BackgroundTransparency = 1
+Content.CanvasSize = UDim2.new(0,0,2,0)
+Content.ScrollBarThickness = 2
+
+local Layout = Instance.new("UIListLayout", Content)
+Layout.Padding = UDim.new(0,10)
+
+local function AddToggle(name, key, callback)
+	local b = Instance.new("TextButton", Content)
+	b.Size = UDim2.new(1, -10, 0, 40)
+	b.BackgroundColor3 = Config.Bg
+	b.Text = "  " .. name .. " [" .. key .. "]"
+	b.Font = Enum.Font.GothamMedium
+	b.TextColor3 = Color3.new(1,1,1)
+	b.TextSize = 13
+	b.TextXAlignment = Enum.TextXAlignment.Left
+	Instance.new("UICorner", b)
+
+	local indicator = Instance.new("Frame", b)
+	indicator.Size = UDim2.new(0,8,0,8)
+	indicator.Position = UDim2.new(1,-20,0.5,-4)
+	indicator.BackgroundColor3 = Color3.fromRGB(200,50,50)
+	Instance.new("UICorner", indicator)
+
+	b.MouseButton1Click:Connect(function()
+		local state = callback()
+		TweenService:Create(indicator, TweenInfo.new(0.3), {BackgroundColor3 = state and Color3.fromRGB(50,200,50) or Color3.fromRGB(200,50,50)}):Play()
+	end)
 end
 
+AddToggle("Magic Fly", "F", function() Modules.Fly = not Modules.Fly return Modules.Fly end)
+AddToggle("Smart Dodge", "Q", function() Modules.Dodge = not Modules.Dodge return Modules.Dodge end)
+
+-- ЛОГИКА МОДУЛЕЙ
 RunService.Heartbeat:Connect(function()
 	local c, hrp, hum = getChar()
 	if not hrp or not hum then return end
-
+	
 	if Modules.Fly then
-		local dir = hum.MoveDirection
-		hrp.Velocity = Vector3.new(dir.X * 25, math.sin(tick() * 8) * 2, dir.Z * 25)
+		hrp.Velocity = Vector3.new(hum.MoveDirection.X * 25, math.sin(tick()*7)*3, hum.MoveDirection.Z * 25)
 	end
-
+	
 	if Modules.Dodge then
-		local best, dist = nil, 10
 		for _, p in pairs(Players:GetPlayers()) do
 			if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-				local opp = p.Character.HumanoidRootPart
-				local d = (opp.Position + (opp.AssemblyLinearVelocity * 0.2) - hrp.Position).Magnitude
-				if d < dist then best = opp; dist = d end
+				local dist = (p.Character.HumanoidRootPart.Position - hrp.Position).Magnitude
+				if dist < 12 then
+					local away = (hrp.Position - p.Character.HumanoidRootPart.Position).Unit
+					hrp.Velocity = Vector3.new(away.X * 35, 0, away.Z * 35)
+				end
 			end
-		end
-		if best then
-			local away = (hrp.Position - best.Position).Unit
-			hrp.Velocity = Vector3.new(away.X * 30, 0, away.Z * 30)
 		end
 	end
 end)
 
-UserInputService.InputBegan:Connect(function(i, g)
-	if g then return end
-	if i.KeyCode == Enum.KeyCode.F then Modules.Fly = not Modules.Fly end
-	if i.KeyCode == Enum.KeyCode.Q then Modules.Dodge = not Modules.Dodge end
-end)
+--========================================================--
+-- ЗАПУСК (START)
+--========================================================--
 
---========================================================--
--- INIT SEQUENCE
---========================================================--
 task.spawn(function()
 	for i = 1, 100 do
 		LBar.Size = UDim2.new(i/100, 0, 1, 0)
-		LPercent.Text = i .. "%"
-		task.wait(0.02)
+		task.wait(0.015)
 	end
-	task.wait(0.3)
-	local tw = TweenService:Create(LFrame, TweenInfo.new(0.6), {BackgroundTransparency = 1})
+	
+	local Tween = TweenService:Create(LFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
 	for _, v in pairs(LMain:GetChildren()) do
-		if v:IsA("TextLabel") then TweenService:Create(v, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
-		elseif v:IsA("ImageLabel") then TweenService:Create(v, TweenInfo.new(0.5), {ImageTransparency = 1}):Play()
-		elseif v:IsA("Frame") then TweenService:Create(v, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play() end
+		pcall(function() TweenService:Create(v, TweenInfo.new(0.5), {ImageTransparency = 1, TextTransparency = 1, BackgroundTransparency = 1}):Play() end)
 	end
-	tw:Play()
-	tw.Completed:Connect(function()
+	Tween:Play()
+	Tween.Completed:Connect(function()
 		Loader:Destroy()
 		FloatIcon.Enabled = true
 	end)
