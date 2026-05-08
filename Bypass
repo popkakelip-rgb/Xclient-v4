@@ -29,10 +29,10 @@ local CoreGui = game:GetService("CoreGui")
 -- ═══════════════════════════════════════════════════════════════
 -- CHARACTER
 -- ═══════════════════════════════════════════════════════════════
-local player = Players.LocalPlayer
+
 local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid", 10)
-local rootPart = character:WaitForChild("HumanoidRootPart", 10)
+local humanoid = character:WaitForChild("Humanoid", 20)
+local rootPart = character:WaitForChild("HumanoidRootPart", 20)
 
 if not humanoid or not rootPart then
 	warn("[XCLIENT] Failed to load character!") env.XClientLoaded = false return
@@ -179,7 +179,8 @@ notificationContainer.Size = UDim2.new(0, 300, 1, -20)
 notificationContainer.Position = UDim2.new(1, -310, 0, 10)
 notificationContainer.BackgroundTransparency = 1
 notificationContainer.ZIndex = 50
-notificationContainer.Parent = screenGui
+local guiParent = (game:GetService("CoreGui"):FindFirstChild("RobloxGui") and game:GetService("CoreGui")) or player:WaitForChild("PlayerGui")
+screenGui.Parent = guiParent
 
 local notificationLayout = Instance.new("UIListLayout")
 notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -306,7 +307,7 @@ end
 local menuButton = Instance.new("TextButton")
 menuButton.Name = "XClientButton"
 menuButton.Size = UDim2.new(0, 55, 0, 55)
-menuButton.Position = UDim2.new(0, 15, 0, 15)
+menuButton.Position = UDim2.new(0, 70, 0, 70)
 menuButton.BackgroundColor3 = COLORS.background
 menuButton.BorderSizePixel = 0
 menuButton.Text = ""
