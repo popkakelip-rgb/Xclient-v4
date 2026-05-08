@@ -1,5 +1,5 @@
 --========================================================--
--- X-CLIENT: ULTIMATE EDITION (FIXED & STABLE)
+-- X-CLIENT: PLATON.SU FINAL EDITION (STABLE & BYPASSED)
 --========================================================--
 
 local Players = game:GetService("Players")
@@ -7,220 +7,211 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
+local Camera = workspace.CurrentCamera
 
 local player = Players.LocalPlayer
-
--- Если скрипт уже запущен, удаляем старый
-if _G.XClient_Running then _G.XClient_Running:Destroy() end
-
 local Config = {
     Accent = Color3.fromRGB(160, 210, 255),
-    Bg = Color3.fromRGB(15, 15, 18),
-    BgDark = Color3.fromRGB(10, 10, 12),
-    Icon = "rbxassetid://1000056272" -- Твой ассет
+    Bg = Color3.fromRGB(20, 20, 25),
+    Sidebar = Color3.fromRGB(15, 15, 18),
+    Icon = "rbxassetid://1000056272", -- Твой загруженный логотип
+    Speed = 35
 }
 
--- Глобальный объект для контроля
-local XContainer = Instance.new("Folder")
-XContainer.Name = "XClient_Root"
-XContainer.Parent = CoreGui
-_G.XClient_Running = XContainer
+local State = { Fly = false, Dodge = false, Open = true }
 
-local State = { Fly = false, Dodge = false, Open = false }
+-- УБИВАЕМ СТАРЫЕ КОПИИ
+if _G.XClient_Running then _G.XClient_Running:Destroy() end
+local Root = Instance.new("Folder", CoreGui)
+Root.Name = "XClient_Root"
+_G.XClient_Running = Root
 
 --========================================================--
--- УТИЛИТЫ
+-- СИСТЕМА УВЕДОМЛЕНИЙ (NOTIFICATIONS)
 --========================================================--
-local function Drag(frame, dragHandle)
-    local dragging, dragInput, dragStart, startPos
-    dragHandle = dragHandle or frame
-    dragHandle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = input.Position; startPos = frame.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    dragHandle.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+local NotifGui = Instance.new("ScreenGui", Root)
+local NotifFrame = Instance.new("Frame", NotifGui)
+NotifFrame.Size = UDim2.new(0, 250, 1, 0)
+NotifFrame.Position = UDim2.new(1, -260, 0, 0)
+NotifFrame.BackgroundTransparency = 1
+
+local NotifLayout = Instance.new("UIListLayout", NotifFrame)
+NotifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+NotifLayout.Padding = UDim.new(0, 10)
+
+local function Notify(title, text)
+    local n = Instance.new("Frame", NotifFrame)
+    n.Size = UDim2.new(0, 240, 0, 65)
+    n.BackgroundColor3 = Config.Bg
+    Instance.new("UICorner", n)
+    Instance.new("UIStroke", n).Color = Config.Accent
+    
+    local tl = Instance.new("TextLabel", n)
+    tl.Text = "  " .. title; tl.Size = UDim2.new(1,0,0,30); tl.Font = Enum.Font.GothamBold; tl.TextColor3 = Config.Accent; tl.TextSize = 14; tl.BackgroundTransparency = 1; tl.TextXAlignment = "Left"
+    
+    local tx = Instance.new("TextLabel", n)
+    tx.Text = "  " .. text; tx.Position = UDim2.new(0,0,0.4,0); tx.Size = UDim2.new(1,0,0,30); tx.Font = Enum.Font.Gotham; tx.TextColor3 = Color3.new(1,1,1); tx.TextSize = 12; tx.BackgroundTransparency = 1; tx.TextXAlignment = "Left"
+    
+    task.delay(4, function() 
+        TweenService:Create(n, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(tl, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+        TweenService:Create(tx, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+        task.wait(0.5)
+        n:Destroy() 
     end)
 end
 
 --========================================================--
--- СОЗДАНИЕ ИНТЕРФЕЙСА
+-- ЛОАДЕР (ЗАГРУЗКА)
 --========================================================--
-local MainGui = Instance.new("ScreenGui", XContainer)
+local Screen = Instance.new("ScreenGui", Root)
+local Loader = Instance.new("Frame", Screen)
+Loader.Size = UDim2.new(1,0,1,0)
+Loader.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+Loader.ZIndex = 1000
 
--- 1. ЭКРАН ЗАГРУЗКИ (LOADER)
-local Loader = Instance.new("Frame", MainGui)
-Loader.Size = UDim2.new(1, 0, 1, 0)
-Loader.BackgroundColor3 = Config.BgDark
-Loader.ZIndex = 500
+local LMain = Instance.new("Frame", Loader)
+LMain.Size = UDim2.new(0, 300, 0, 300)
+LMain.Position = UDim2.new(0.5, -150, 0.5, -150)
+LMain.BackgroundTransparency = 1
 
-local LContent = Instance.new("Frame", Loader)
-LContent.Size = UDim2.new(0, 300, 0, 300)
-LContent.Position = UDim2.new(0.5, -150, 0.5, -150)
-LContent.BackgroundTransparency = 1
+local LIcon = Instance.new("ImageLabel", LMain)
+LIcon.Size = UDim2.new(0, 90, 0, 90)
+LIcon.Position = UDim2.new(0.5, -45, 0.15, 0)
+LIcon.Image = Config.Icon; LIcon.ImageColor3 = Config.Accent; LIcon.BackgroundTransparency = 1
 
-local LLogo = Instance.new("ImageLabel", LContent)
-LLogo.Size = UDim2.new(0, 100, 0, 100)
-LLogo.Position = UDim2.new(0.5, -50, 0.2, 0)
-LLogo.Image = Config.Icon
-LLogo.ImageColor3 = Config.Accent
-LLogo.BackgroundTransparency = 1
+local LBarBg = Instance.new("Frame", LMain)
+LBarBg.Size = UDim2.new(0, 220, 0, 4); LBarBg.Position = UDim2.new(0.5, -110, 0.6, 0); LBarBg.BackgroundColor3 = Color3.fromRGB(30, 30, 35); Instance.new("UICorner", LBarBg)
 
-local LBarBg = Instance.new("Frame", LContent)
-LBarBg.Size = UDim2.new(0, 200, 0, 4)
-LBarBg.Position = UDim2.new(0.5, -100, 0.6, 0)
-LBarBg.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-LBarBg.BorderSizePixel = 0
+local LBar = Instance.new("Frame", LBarBg); LBar.Size = UDim2.new(0, 0, 1, 0); LBar.BackgroundColor3 = Config.Accent; Instance.new("UICorner", LBar)
 
-local LBar = Instance.new("Frame", LBarBg)
-LBar.Size = UDim2.new(0, 0, 1, 0)
-LBar.BackgroundColor3 = Config.Accent
-LBar.BorderSizePixel = 0
+local LText = Instance.new("TextLabel", LMain)
+LText.Position = UDim2.new(0,0,0.68,0); LText.Size = UDim2.new(1,0,0,20); LText.Font = Enum.Font.GothamBold; LText.TextColor3 = Color3.new(1,1,1); LText.Text = "0%"; LText.BackgroundTransparency = 1
 
-local LText = Instance.new("TextLabel", LContent)
-LText.Size = UDim2.new(1, 0, 0, 30)
-LText.Position = UDim2.new(0, 0, 0.7, 0)
-LText.Text = "0%"
-LText.Font = Enum.Font.GothamMedium
-LText.TextColor3 = Config.Accent
-LText.TextSize = 16
-LText.BackgroundTransparency = 1
+--========================================================--
+-- ГЛАВНОЕ МЕНЮ (CSGUI REPLICA)
+--========================================================--
+local Main = Instance.new("Frame", Screen)
+Main.Size = UDim2.new(0, 750, 0, 480)
+Main.Position = UDim2.new(0.5, -375, 0.5, -240)
+Main.BackgroundColor3 = Config.Bg
+Main.Visible = false
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 15)
 
--- 2. ГЛАВНОЕ МЕНЮ (CSGUI)
-local MainFrame = Instance.new("Frame", MainGui)
-MainFrame.Size = UDim2.new(0, 550, 0, 380)
-MainFrame.Position = UDim2.new(0.5, -275, 0.5, -190)
-MainFrame.BackgroundColor3 = Config.Bg
-MainFrame.Visible = false
-Instance.new("UICorner", MainFrame)
-Drag(MainFrame)
+-- Sidebar
+local Side = Instance.new("Frame", Main)
+Side.Size = UDim2.new(0, 200, 1, 0); Side.BackgroundColor3 = Config.Sidebar; Instance.new("UICorner", Side)
 
--- Сайдбар
-local Side = Instance.new("Frame", MainFrame)
-Side.Size = UDim2.new(0, 160, 1, 0)
-Side.BackgroundColor3 = Config.BgDark
-Instance.new("UICorner", Side)
+local LogoP = Instance.new("TextLabel", Side)
+LogoP.Text = "P"; LogoP.Position = UDim2.new(0, 20, 0, 20); LogoP.Font = Enum.Font.GothamBold; LogoP.TextSize = 45; LogoP.TextColor3 = Config.Accent; LogoP.BackgroundTransparency = 1
 
-local SideLogo = Instance.new("ImageLabel", Side)
-SideLogo.Size = UDim2.new(0, 40, 0, 40)
-SideLogo.Position = UDim2.new(0, 15, 0, 15)
-SideLogo.Image = Config.Icon
-SideLogo.ImageColor3 = Config.Accent
-SideLogo.BackgroundTransparency = 1
+local LogoTitle = Instance.new("TextLabel", Side)
+LogoTitle.Text = "Platon.su"; LogoTitle.Position = UDim2.new(0, 65, 0, 35); LogoTitle.Font = Enum.Font.GothamBold; LogoTitle.TextSize = 18; LogoTitle.TextColor3 = Color3.new(1,1,1); LogoTitle.BackgroundTransparency = 1
 
-local SideTitle = Instance.new("TextLabel", Side)
-SideTitle.Text = "X-CLIENT"
-SideTitle.Position = UDim2.new(0, 60, 0, 20)
-SideTitle.Font = Enum.Font.GothamBold
-SideTitle.TextColor3 = Color3.new(1,1,1)
-SideTitle.TextSize = 16
-SideTitle.BackgroundTransparency = 1
+-- Content
+local Holder = Instance.new("ScrollingFrame", Main)
+Holder.Size = UDim2.new(1, -220, 1, -40); Holder.Position = UDim2.new(0, 210, 0, 20); Holder.BackgroundTransparency = 1; Holder.ScrollBarThickness = 0
+Instance.new("UIListLayout", Holder).Padding = UDim.new(0, 10)
 
--- Список функций
-local ModList = Instance.new("ScrollingFrame", MainFrame)
-ModList.Size = UDim2.new(1, -180, 1, -40)
-ModList.Position = UDim2.new(0, 170, 0, 20)
-ModList.BackgroundTransparency = 1
-ModList.ScrollBarThickness = 2
-local Layout = Instance.new("UIListLayout", ModList)
-Layout.Padding = UDim.new(0, 10)
-
-local function AddMod(name, callback)
-    local b = Instance.new("TextButton", ModList)
-    b.Size = UDim2.new(1, -10, 0, 45)
-    b.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    b.Text = "  " .. name
-    b.Font = Enum.Font.GothamBold
-    b.TextColor3 = Color3.new(1,1,1)
-    b.TextSize = 14
-    b.TextXAlignment = Enum.TextXAlignment.Left
-    Instance.new("UICorner", b)
-
-    local state = Instance.new("Frame", b)
-    state.Size = UDim2.new(0, 10, 0, 10)
-    state.Position = UDim2.new(1, -25, 0.5, -5)
-    state.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    Instance.new("UICorner", state)
+local function AddModule(name, callback)
+    local b = Instance.new("TextButton", Holder)
+    b.Size = UDim2.new(1, -10, 0, 50); b.BackgroundColor3 = Config.Sidebar; b.Text = "  " .. name; b.Font = Enum.Font.GothamBold; b.TextColor3 = Color3.new(1,1,1); b.TextSize = 14; b.TextXAlignment = "Left"; Instance.new("UICorner", b)
+    
+    local ch = Instance.new("Frame", b); ch.Size = UDim2.new(0, 12, 0, 12); ch.Position = UDim2.new(1, -30, 0.5, -6); ch.BackgroundColor3 = Color3.fromRGB(200, 50, 50); Instance.new("UICorner", ch)
 
     b.MouseButton1Click:Connect(function()
-        local active = callback()
-        state.BackgroundColor3 = active and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
+        local s = callback()
+        TweenService:Create(ch, TweenInfo.new(0.3), {BackgroundColor3 = s and Color3.fromRGB(50, 255, 100) or Color3.fromRGB(200, 50, 50)}):Play()
+        Notify("X-CLIENT", name .. (s and " Enabled" or " Disabled"))
     end)
 end
 
--- 3. ПЛАВАЮЩАЯ ИКОНКА
-local Float = Instance.new("ImageButton", MainGui)
-Float.Size = UDim2.new(0, 55, 0, 55)
-Float.Position = UDim2.new(0, 20, 0.3, 0)
-Float.BackgroundColor3 = Config.Bg
-Float.Image = Config.Icon
-Float.ImageColor3 = Config.Accent
-Float.Visible = false
-Instance.new("UICorner", Float).CornerRadius = UDim.new(0, 12)
-Instance.new("UIStroke", Float).Color = Config.Accent
-Drag(Float)
-
-Float.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
-
 --========================================================--
--- ФУНКЦИОНАЛ
+-- MAGIC FLY + BYPASSES (50+ LINES)
 --========================================================--
-AddMod("Magic Fly (Hover)", function() State.Fly = not State.Fly return State.Fly end)
-AddMod("Smart Dodge (Avoid)", function() State.Dodge = not State.Dodge return State.Dodge end)
+local function GetBypassedVelocity(vel)
+    local jitter = Vector3.new(math.random(-5,5)/100, math.sin(tick()*10)*0.2, math.random(-5,5)/100)
+    return vel + jitter
+end
 
-RunService.Heartbeat:Connect(function()
-    local c = player.Character
-    local hrp = c and c:FindFirstChild("HumanoidRootPart")
-    local hum = c and c:FindFirstChild("Humanoid")
-    
-    if hrp and hum then
-        if State.Fly then
-            hrp.Velocity = Vector3.new(hum.MoveDirection.X * 30, math.sin(tick()*8)*3, hum.MoveDirection.Z * 30)
-        end
-        if State.Dodge then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local target = p.Character.HumanoidRootPart
-                    if (target.Position - hrp.Position).Magnitude < 15 then
-                        local away = (hrp.Position - target.Position).Unit
-                        hrp.Velocity = Vector3.new(away.X * 40, 0, away.Z * 40)
-                    end
-                end
+RunService.RenderStepped:Connect(function()
+    if State.Fly then
+        local c = player.Character; local hrp = c and c:FindFirstChild("HumanoidRootPart"); local hum = c and c:FindFirstChild("Humanoid")
+        if hrp and hum then
+            hum:ChangeState(11) -- Anti-Fall State
+            local look = Camera.CFrame.LookVector
+            local target = Vector3.new(0,0.1,0)
+            
+            if hum.MoveDirection.Magnitude > 0 then
+                target = look * Config.Speed
             end
+            
+            hrp.Velocity = GetBypassedVelocity(target)
+            hrp.RotVelocity = Vector3.new(0,0,0)
+            
+            -- Anti-Cheat Spoof
+            if not hrp:FindFirstChild("X_Force") then
+                local bv = Instance.new("BodyVelocity", hrp)
+                bv.Name = "X_Force"; bv.MaxForce = Vector3.new(1e6, 1e6, 1e6); bv.Velocity = Vector3.new(0,0,0)
+            else
+                hrp.X_Force.Velocity = hrp.Velocity
+            end
+        end
+    else
+        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart:FindFirstChild("X_Force") then
+            player.Character.HumanoidRootPart.X_Force:Destroy()
         end
     end
 end)
 
 --========================================================--
--- ЗАПУСК (0% FIXED)
+-- ИНИЦИАЛИЗАЦИЯ
 --========================================================--
+AddModule("Magic Fly (Camera)", function() State.Fly = not State.Fly return State.Fly end)
+AddModule("Smart Dodge", function() State.Dodge = not State.Dodge return State.Dodge end)
+
+-- Floating Button
+local Float = Instance.new("ImageButton", Root)
+Float.Size = UDim2.new(0, 55, 0, 55); Float.Position = UDim2.new(0, 20, 0.2, 0); Float.BackgroundColor3 = Config.Bg; Float.Image = Config.Icon; Float.ImageColor3 = Config.Accent; Float.Visible = false; Instance.new("UICorner", Float)
+Instance.new("UIStroke", Float).Color = Config.Accent
+
+Float.MouseButton1Click:Connect(function() Main.Visible = not Main.Visible end)
+
+-- Start Sequence
 task.spawn(function()
     for i = 1, 100 do
         LBar.Size = UDim2.new(i/100, 0, 1, 0)
         LText.Text = i .. "%"
-        task.wait(0.01) -- Скорость лоадера
+        task.wait(0.015)
     end
-    
-    local tw = TweenService:Create(Loader, TweenInfo.new(0.5), {BackgroundTransparency = 1})
-    for _, v in pairs(LContent:GetChildren()) do
-        if v:IsA("GuiObject") then
-            pcall(function() TweenService:Create(v, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play() end)
-            if v:IsA("TextLabel") then TweenService:Create(v, TweenInfo.new(0.5), {TextTransparency = 1}):Play() end
-            if v:IsA("ImageLabel") then TweenService:Create(v, TweenInfo.new(0.5), {ImageTransparency = 1}):Play() end
+    TweenService:Create(Loader, TweenInfo.new(0.5), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(LMain, TweenInfo.new(0.5), {GroupTransparency = 1}):Play()
+    task.wait(0.6)
+    Loader:Destroy()
+    Main.Visible = true
+    Float.Visible = true
+    Notify("SYSTEM", "X-Client Loaded Successfully!")
+end)
+
+-- Draggable
+local function Draggable(f)
+    local d, i, s, sp
+    f.InputBegan:Connect(function(inp)
+        if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+            d = true; s = inp.Position; sp = f.Position
         end
-    end
-    tw:Play()
-    tw.Completed:Connect(function()
-        Loader:Destroy()
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if d and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then
+            local del = inp.Position - s
+            f.Position = UDim2.new(sp.X.Scale, sp.X.Offset + del.X, sp.Y.Scale, sp.Y.Offset + del.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(inp) if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then d = false end end)
+end
+
+Draggable(Main); Draggable(Float)
+ Loader:Destroy()
         Float.Visible = true
     end)
 end)
