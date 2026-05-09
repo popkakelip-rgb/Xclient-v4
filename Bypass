@@ -1,648 +1,933 @@
---[[
-    xclient — MAGIC FLIGHT / COMBAT / DODGE
-    Fixed single-file version
-]]
+-- ============================================
+-- XCLIENT MAGIC FLIGHT С СИСТЕМОЙ ВКЛАДОК
+-- ============================================
 
--- =========================
--- ENV / SERVICES
--- =========================
-local ENV = (typeof(getgenv) == "function" and getgenv()) or _G
-
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local TweenService     = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local Workspace        = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
-local Camera      = Workspace.CurrentCamera
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+local camera = workspace.CurrentCamera
 
--- =========================
--- FORWARD DECLARATIONS
--- =========================
-local openSpeedPanel, closeSpeedPanel
-local openDodgePanel, closeDodgePanel
-local setDamageFly, setDodge
-local startFlight, stopFlight
+-- ============================================
+-- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
+-- ============================================
 
--- =========================
--- CONFIG
--- =========================
-local Cfg = {
-    NormalSpeed          = 18,
-    VerticalSpeed        = 10,
-    ResolverBoostSpeed   = 21,
-    ResolverDetectRadius = 13,
-    ResolverSafeRadius   = 10,
-    ResolverRiseSpeed    = 15,
-    ResolverSinkSpeed    = 6,
-    ResolverVertLerp     = 0.08,
-    ResolverSpeedBoost   = 1.35,
-    LerpAlpha            = 0.20,
+_G.FlightSpeed = _G.FlightSpeed or 16
+_G.MagicResolverEnabled = _G.MagicResolverEnabled or false
+_G.ResolverTargetDistance = 12
+_G.ResolverReturnDistance = 10
+_G.GUIStyle = _G.GUIStyle or "CS"
 
-    Accent      = Color3.fromRGB(0, 160, 255),
-    AccentRes   = Color3.fromRGB(255, 195, 65),
-    AccentGui   = Color3.fromRGB(160, 130, 255),
-    BG          = Color3.fromRGB(22, 22, 28),
-    BG2         = Color3.fromRGB(16, 16, 20),
-    BG3         = Color3.fromRGB(30, 30, 38),
-    BG4         = Color3.fromRGB(12, 12, 16),
-    Sidebar     = Color3.fromRGB(10, 10, 14),
-    Text        = Color3.fromRGB(210, 210, 220),
-    TextDim     = Color3.fromRGB(88, 88, 106),
-    TextMid     = Color3.fromRGB(140, 140, 155),
-    Border      = Color3.fromRGB(40, 40, 52),
-    BorderLight = Color3.fromRGB(60, 60, 78),
-    Black       = Color3.fromRGB(0, 0, 0),
-    White       = Color3.fromRGB(255, 255, 255),
-    NotifyBG    = Color3.fromRGB(12, 12, 16),
+local isFlying = false
+local flightConnection = nil
+local swayOffset = 0
+local swayDirection = 1
+local currentTarget = nil
+local targetApproachSpeed = _G.FlightSpeed * 1.3
+local currentTab = "MOV"
 
-    P_BG        = Color3.fromRGB(20, 18, 28),
-    P_HEADER    = Color3.fromRGB(30, 26, 42),
-    P_ROW       = Color3.fromRGB(26, 22, 36),
-    P_ROW2      = Color3.fromRGB(22, 18, 30),
-    P_ACCENT    = Color3.fromRGB(100, 180, 255),
-    P_BORDER    = Color3.fromRGB(55, 45, 75),
-    P_TEXT      = Color3.fromRGB(220, 215, 235),
-    P_TEXTDIM   = Color3.fromRGB(110, 100, 135),
+-- ============================================
+-- ТИПЫ УВЕДОМЛЕНИЙ
+-- ============================================
+
+local NotificationTypes = {
+    SUCCESS = {color = Color3.fromRGB(50, 200, 100), icon = "✓"},
+    ERROR = {color = Color3.fromRGB(200, 50, 50), icon = "✕"},
+    WARNING = {color = Color3.fromRGB(255, 165, 0), icon = "⚠"},
+    INFO = {color = Color3.fromRGB(100, 200, 255), icon = "ℹ"},
+    FLIGHT = {color = Color3.fromRGB(150, 100, 200), icon = "🚀"},
+    RESOLVER = {color = Color3.fromRGB(200, 150, 100), icon = "✨"},
+    SYSTEM = {color = Color3.fromRGB(100, 100, 100), icon = "⚙"}
 }
 
--- =========================
--- GLOBAL STATE
--- =========================
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Humanoid  = Character:WaitForChild("Humanoid")
-local RootPart  = Character:WaitForChild("HumanoidRootPart")
-
-local GUI_TAG = "xclient_v4"
-
-local Flying       = false
-local flightEnabled = false
-local heartConn    = nil
-
-local ResolverOn      = false
-local resolverActive  = false
-local resolverVertVel = 0
-
-local dfOn        = false
-local dfActive    = false
-local dfCharge    = 100
-local dfDrained   = false
-local dfHeartConn = nil
-local dfDmgConn   = nil
-local DF_DRAIN    = 10
-local DF_REGEN    = 5
-
-local speedOn   = false
-local speedConn = nil
-local jumpConn  = nil
-local speedMode = "collision"
-local speedEnabled = false
-
-local dodgeOn   = false
-local dodgeConn = nil
-local lastDodge = 0
-
-local menuOpen  = false
-local guiStyle  = "cs"
-local activeTab = "MOV"
-
--- =========================
--- CLEAN OLD GUI
--- =========================
-do
-    local pg = PlayerGui
-    local old = pg:FindFirstChild(GUI_TAG)
-    if old then old:Destroy() end
-
-    local ok, cg = pcall(function()
-        return game:GetService("CoreGui")
+local function createNotification(notifType, title, message, duration)
+    notifType = notifType or "INFO"
+    duration = duration or 3
+    
+    local typeData = NotificationTypes[notifType] or NotificationTypes.INFO
+    
+    local notifContainer = Instance.new("Frame")
+    notifContainer.Name = "Notification_" .. tick()
+    notifContainer.Size = UDim2.new(0, 350, 0, 0)
+    notifContainer.Position = UDim2.new(0, 20, 1, -100)
+    notifContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    notifContainer.BorderSizePixel = 2
+    notifContainer.BorderColor3 = typeData.color
+    notifContainer.Parent = screenGui
+    
+    local notifCorner = Instance.new("UICorner")
+    notifCorner.CornerRadius = UDim.new(0, 8)
+    notifCorner.Parent = notifContainer
+    
+    local leftBar = Instance.new("Frame")
+    leftBar.Name = "LeftBar"
+    leftBar.Size = UDim2.new(0, 4, 1, 0)
+    leftBar.BackgroundColor3 = typeData.color
+    leftBar.BorderSizePixel = 0
+    leftBar.Parent = notifContainer
+    
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Name = "Icon"
+    iconLabel.Text = typeData.icon
+    iconLabel.Size = UDim2.new(0, 40, 0, 40)
+    iconLabel.Position = UDim2.new(0, 10, 0, 10)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.TextColor3 = typeData.color
+    iconLabel.TextSize = 20
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.Parent = notifContainer
+    
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "Title"
+    titleLabel.Text = title
+    titleLabel.Size = UDim2.new(1, -60, 0, 25)
+    titleLabel.Position = UDim2.new(0, 55, 0, 10)
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLabel.TextSize = 14
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = notifContainer
+    
+    local messageLabel = Instance.new("TextLabel")
+    messageLabel.Name = "Message"
+    messageLabel.Text = message
+    messageLabel.Size = UDim2.new(1, -60, 0, 30)
+    messageLabel.Position = UDim2.new(0, 55, 0, 35)
+    messageLabel.BackgroundTransparency = 1
+    messageLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+    messageLabel.TextSize = 12
+    messageLabel.Font = Enum.Font.Gotham
+    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
+    messageLabel.TextWrapped = true
+    messageLabel.Parent = notifContainer
+    
+    local progressBar = Instance.new("Frame")
+    progressBar.Name = "ProgressBar"
+    progressBar.Size = UDim2.new(1, 0, 0, 2)
+    progressBar.Position = UDim2.new(0, 0, 1, -2)
+    progressBar.BackgroundColor3 = typeData.color
+    progressBar.BorderSizePixel = 0
+    progressBar.Parent = notifContainer
+    
+    local appearTween = TweenService:Create(
+        notifContainer,
+        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {Size = UDim2.new(0, 350, 0, 80)}
+    )
+    appearTween:Play()
+    
+    local progressTween = TweenService:Create(
+        progressBar,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut),
+        {Size = UDim2.new(0, 0, 0, 2)}
+    )
+    progressTween:Play()
+    
+    task.wait(duration)
+    
+    local disappearTween = TweenService:Create(
+        notifContainer,
+        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        {Size = UDim2.new(0, 350, 0, 0)}
+    )
+    disappearTween:Play()
+    
+    disappearTween.Completed:Connect(function()
+        notifContainer:Destroy()
     end)
-    if ok and cg then
-        local old2 = cg:FindFirstChild(GUI_TAG)
-        if old2 then old2:Destroy() end
+end
+
+-- ============================================
+-- СОЗДАНИЕ ОСНОВНОГО GUI
+-- ============================================
+
+local screenGui = player:WaitForChild("PlayerGui"):FindFirstChild("XClientGui")
+if screenGui then
+    screenGui:Destroy()
+end
+
+screenGui = Instance.new("ScreenGui")
+screenGui.Name = "XClientGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- ============================================
+-- ЛОГОТИП XCLIENT
+-- ============================================
+
+local logoContainer = Instance.new("Frame")
+logoContainer.Name = "LogoContainer"
+logoContainer.Size = UDim2.new(0, 60, 0, 60)
+logoContainer.Position = UDim2.new(0, 15, 0, 15)
+logoContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+logoContainer.BorderSizePixel = 0
+logoContainer.Parent = screenGui
+
+local logoCorner = Instance.new("UICorner")
+logoCorner.CornerRadius = UDim.new(1, 0)
+logoCorner.Parent = logoContainer
+
+local logoText = Instance.new("TextLabel")
+logoText.Name = "LogoText"
+logoText.Text = "X"
+logoText.Size = UDim2.new(1, 0, 1, 0)
+logoText.BackgroundTransparency = 1
+logoText.TextColor3 = Color3.fromRGB(255, 255, 255)
+logoText.TextSize = 32
+logoText.Font = Enum.Font.GothamBold
+logoText.Parent = logoContainer
+
+local logoLabel = Instance.new("TextLabel")
+logoLabel.Name = "LogoLabel"
+logoLabel.Text = "XCLIENT"
+logoLabel.Size = UDim2.new(0, 60, 0, 20)
+logoLabel.Position = UDim2.new(0, 0, 1, 5)
+logoLabel.BackgroundTransparency = 1
+logoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+logoLabel.TextSize = 10
+logoLabel.Font = Enum.Font.GothamBold
+logoLabel.Parent = logoContainer
+
+-- ============================================
+-- ЭКРАН ЗАГРУЗКИ
+-- ============================================
+
+local function showLoadingScreen()
+    local loadingBg = Instance.new("Frame")
+    loadingBg.Name = "LoadingScreen"
+    loadingBg.Size = UDim2.new(1, 0, 1, 0)
+    loadingBg.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    loadingBg.BackgroundTransparency = 0.3
+    loadingBg.BorderSizePixel = 0
+    loadingBg.Parent = screenGui
+    
+    local loadingContainer = Instance.new("Frame")
+    loadingContainer.Name = "LoadingContainer"
+    loadingContainer.Size = UDim2.new(0, 150, 0, 150)
+    loadingContainer.Position = UDim2.new(0.5, -75, 0.5, -75)
+    loadingContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    loadingContainer.BorderSizePixel = 2
+    loadingContainer.BorderColor3 = Color3.fromRGB(100, 200, 255)
+    loadingContainer.Parent = loadingBg
+    
+    local loadingCorner = Instance.new("UICorner")
+    loadingCorner.CornerRadius = UDim.new(0, 12)
+    loadingCorner.Parent = loadingContainer
+    
+    local loadingText = Instance.new("TextLabel")
+    loadingText.Name = "LoadingText"
+    loadingText.Text = "XCLIENT"
+    loadingText.Size = UDim2.new(1, 0, 0, 60)
+    loadingText.Position = UDim2.new(0, 0, 0, 20)
+    loadingText.BackgroundTransparency = 1
+    loadingText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    loadingText.TextSize = 24
+    loadingText.Font = Enum.Font.GothamBold
+    loadingText.Parent = loadingContainer
+    
+    local statusText = Instance.new("TextLabel")
+    statusText.Name = "StatusText"
+    statusText.Text = "Загрузка..."
+    statusText.Size = UDim2.new(1, 0, 0, 30)
+    statusText.Position = UDim2.new(0, 0, 0, 80)
+    statusText.BackgroundTransparency = 1
+    statusText.TextColor3 = Color3.fromRGB(100, 200, 255)
+    statusText.TextSize = 12
+    statusText.Font = Enum.Font.Gotham
+    statusText.Parent = loadingContainer
+    
+    local rotation = 0
+    local rotationConnection
+    rotationConnection = RunService.RenderStepped:Connect(function()
+        rotation = rotation + 5
+        loadingContainer.Rotation = rotation
+    end)
+    
+    task.wait(2)
+    
+    local fadeTween = TweenService:Create(
+        loadingBg,
+        TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        {BackgroundTransparency = 1}
+    )
+    fadeTween:Play()
+    
+    rotationConnection:Disconnect()
+    
+    fadeTween.Completed:Connect(function()
+        loadingBg:Destroy()
+    end)
+end
+
+-- ============================================
+-- ГЛАВНОЕ МЕНЮ С ВКЛАДКАМИ
+-- ============================================
+
+local mainMenu = Instance.new("Frame")
+mainMenu.Name = "MainMenu"
+mainMenu.Size = UDim2.new(0, 300, 0, 0)
+mainMenu.Position = UDim2.new(1, -320, 0, 90)
+mainMenu.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+mainMenu.BackgroundTransparency = 0.1
+mainMenu.BorderSizePixel = 2
+mainMenu.BorderColor3 = Color3.fromRGB(100, 200, 255)
+mainMenu.Parent = screenGui
+
+local menuCorner = Instance.new("UICorner")
+menuCorner.CornerRadius = UDim.new(0, 8)
+menuCorner.Parent = mainMenu
+
+-- ============================================
+-- СИСТЕМА ВКЛАДОК
+-- ============================================
+
+local tabsContainer = Instance.new("Frame")
+tabsContainer.Name = "TabsContainer"
+tabsContainer.Size = UDim2.new(1, 0, 0, 35)
+tabsContainer.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+tabsContainer.BorderSizePixel = 0
+tabsContainer.Parent = mainMenu
+
+local tabsList = {"MOV", "COM", "VISUAL", "GUI"}
+local tabButtons = {}
+
+for i, tabName in ipairs(tabsList) do
+    local tabBtn = Instance.new("TextButton")
+    tabBtn.Name = tabName .. "Tab"
+    tabBtn.Text = tabName
+    tabBtn.Size = UDim2.new(0.25, 0, 1, 0)
+    tabBtn.Position = UDim2.new((i-1) * 0.25, 0, 0, 0)
+    tabBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    tabBtn.TextColor3 = Color3.fromRGB(100, 100, 100)
+    tabBtn.TextSize = 12
+    tabBtn.Font = Enum.Font.GothamBold
+    tabBtn.BorderSizePixel = 0
+    tabBtn.Parent = tabsContainer
+    
+    tabButtons[tabName] = tabBtn
+end
+
+-- Активная вкладка (подсветка)
+local activeTabIndicator = Instance.new("Frame")
+activeTabIndicator.Name = "ActiveTabIndicator"
+activeTabIndicator.Size = UDim2.new(0.25, 0, 0, 3)
+activeTabIndicator.Position = UDim2.new(0, 0, 1, -3)
+activeTabIndicator.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+activeTabIndicator.BorderSizePixel = 0
+activeTabIndicator.Parent = tabsContainer
+
+-- ============================================
+-- СОДЕРЖИМОЕ ВКЛАДОК
+-- ============================================
+
+local contentContainer = Instance.new("Frame")
+contentContainer.Name = "ContentContainer"
+contentContainer.Size = UDim2.new(1, 0, 1, -35)
+contentContainer.Position = UDim2.new(0, 0, 0, 35)
+contentContainer.BackgroundTransparency = 1
+contentContainer.BorderSizePixel = 0
+contentContainer.Parent = mainMenu
+
+-- ============================================
+-- ВКЛАДКА MOV (ДВИЖЕНИЕ)
+-- ============================================
+
+local movTab = Instance.new("Frame")
+movTab.Name = "MOVTab"
+movTab.Size = UDim2.new(1, 0, 1, 0)
+movTab.BackgroundTransparency = 1
+movTab.BorderSizePixel = 0
+movTab.Parent = contentContainer
+movTab.Visible = true
+
+local flightBtn = Instance.new("TextButton")
+flightBtn.Name = "FlightButton"
+flightBtn.Text = "🚀 ПОЛЕТ: ВЫКЛ"
+flightBtn.Size = UDim2.new(1, -10, 0, 40)
+flightBtn.Position = UDim2.new(0, 5, 0, 10)
+flightBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+flightBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+flightBtn.TextSize = 12
+flightBtn.Font = Enum.Font.GothamBold
+flightBtn.BorderSizePixel = 0
+flightBtn.Parent = movTab
+
+local flightBtnCorner = Instance.new("UICorner")
+flightBtnCorner.CornerRadius = UDim.new(0, 6)
+flightBtnCorner.Parent = flightBtn
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Name = "SpeedLabel"
+speedLabel.Text = "Скорость: " .. _G.FlightSpeed
+speedLabel.Size = UDim2.new(1, -10, 0, 25)
+speedLabel.Position = UDim2.new(0, 5, 0, 55)
+speedLabel.BackgroundTransparency = 1
+speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+speedLabel.TextSize = 11
+speedLabel.Font = Enum.Font.Gotham
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.Parent = movTab
+
+local speedSlider = Instance.new("Frame")
+speedSlider.Name = "SpeedSlider"
+speedSlider.Size = UDim2.new(1, -10, 0, 6)
+speedSlider.Position = UDim2.new(0, 5, 0, 82)
+speedSlider.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+speedSlider.BorderSizePixel = 0
+speedSlider.Parent = movTab
+
+local speedSliderCorner = Instance.new("UICorner")
+speedSliderCorner.CornerRadius = UDim.new(0, 3)
+speedSliderCorner.Parent = speedSlider
+
+local speedSliderFill = Instance.new("Frame")
+speedSliderFill.Name = "Fill"
+speedSliderFill.Size = UDim2.new((_G.FlightSpeed / 50), 0, 1, 0)
+speedSliderFill.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+speedSliderFill.BorderSizePixel = 0
+speedSliderFill.Parent = speedSlider
+
+local speedSliderCorner2 = Instance.new("UICorner")
+speedSliderCorner2.CornerRadius = UDim.new(0, 3)
+speedSliderCorner2.Parent = speedSliderFill
+-- ============================================
+-- ВКЛАДКА COM (КОМАНДЫ)
+-- ============================================
+
+local comTab = Instance.new("Frame")
+comTab.Name = "COMTab"
+comTab.Size = UDim2.new(1, 0, 1, 0)
+comTab.BackgroundTransparency = 1
+comTab.BorderSizePixel = 0
+comTab.Parent = contentContainer
+comTab.Visible = false
+
+local resolverBtn = Instance.new("TextButton")
+resolverBtn.Name = "ResolverButton"
+resolverBtn.Text = "✨ RESOLVER: ВЫКЛ"
+resolverBtn.Size = UDim2.new(1, -10, 0, 40)
+resolverBtn.Position = UDim2.new(0, 5, 0, 10)
+resolverBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
+resolverBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+resolverBtn.TextSize = 12
+resolverBtn.Font = Enum.Font.GothamBold
+resolverBtn.BorderSizePixel = 0
+resolverBtn.Parent = comTab
+
+local resolverBtnCorner = Instance.new("UICorner")
+resolverBtnCorner.CornerRadius = UDim.new(0, 6)
+resolverBtnCorner.Parent = resolverBtn
+
+local resolverInfo = Instance.new("TextLabel")
+resolverInfo.Name = "ResolverInfo"
+resolverInfo.Text = "Радиус: " .. _G.ResolverTargetDistance .. " studs\nОтступление: " .. _G.ResolverReturnDistance .. " studs"
+resolverInfo.Size = UDim2.new(1, -10, 0, 50)
+resolverInfo.Position = UDim2.new(0, 5, 0, 55)
+resolverInfo.BackgroundTransparency = 1
+resolverInfo.TextColor3 = Color3.fromRGB(180, 180, 180)
+resolverInfo.TextSize = 11
+resolverInfo.Font = Enum.Font.Gotham
+resolverInfo.TextXAlignment = Enum.TextXAlignment.Left
+resolverInfo.TextWrapped = true
+resolverInfo.Parent = comTab
+
+-- ============================================
+-- ВКЛАДКА VISUAL (ВИЗУАЛЬНЫЕ ЭФФЕКТЫ)
+-- ============================================
+
+local visualTab = Instance.new("Frame")
+visualTab.Name = "VISUALTab"
+visualTab.Size = UDim2.new(1, 0, 1, 0)
+visualTab.BackgroundTransparency = 1
+visualTab.BorderSizePixel = 0
+visualTab.Parent = contentContainer
+visualTab.Visible = false
+
+local visualLabel = Instance.new("TextLabel")
+visualLabel.Name = "VisualLabel"
+visualLabel.Text = "Визуальные эффекты"
+visualLabel.Size = UDim2.new(1, -10, 0, 30)
+visualLabel.Position = UDim2.new(0, 5, 0, 10)
+visualLabel.BackgroundTransparency = 1
+visualLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+visualLabel.TextSize = 13
+visualLabel.Font = Enum.Font.GothamBold
+visualLabel.TextXAlignment = Enum.TextXAlignment.Left
+visualLabel.Parent = visualTab
+
+local particlesBtn = Instance.new("TextButton")
+particlesBtn.Name = "ParticlesButton"
+particlesBtn.Text = "✓ Частицы: ВКЛ"
+particlesBtn.Size = UDim2.new(1, -10, 0, 35)
+particlesBtn.Position = UDim2.new(0, 5, 0, 45)
+particlesBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
+particlesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+particlesBtn.TextSize = 11
+particlesBtn.Font = Enum.Font.GothamBold
+particlesBtn.BorderSizePixel = 0
+particlesBtn.Parent = visualTab
+
+local particlesBtnCorner = Instance.new("UICorner")
+particlesBtnCorner.CornerRadius = UDim.new(0, 6)
+particlesBtnCorner.Parent = particlesBtn
+
+local trailBtn = Instance.new("TextButton")
+trailBtn.Name = "TrailButton"
+trailBtn.Text = "✓ След: ВКЛ"
+trailBtn.Size = UDim2.new(1, -10, 0, 35)
+trailBtn.Position = UDim2.new(0, 5, 0, 85)
+trailBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
+trailBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+trailBtn.TextSize = 11
+trailBtn.Font = Enum.Font.GothamBold
+trailBtn.BorderSizePixel = 0
+trailBtn.Parent = visualTab
+
+local trailBtnCorner = Instance.new("UICorner")
+trailBtnCorner.CornerRadius = UDim.new(0, 6)
+trailBtnCorner.Parent = trailBtn
+
+-- ============================================
+-- ВКЛАДКА GUI (ИНТЕРФЕЙС)
+-- ============================================
+
+local guiTab = Instance.new("Frame")
+guiTab.Name = "GUITab"
+guiTab.Size = UDim2.new(1, 0, 1, 0)
+guiTab.BackgroundTransparency = 1
+guiTab.BorderSizePixel = 0
+guiTab.Parent = contentContainer
+guiTab.Visible = false
+
+local guiLabel = Instance.new("TextLabel")
+guiLabel.Name = "GUILabel"
+guiLabel.Text = "Стиль интерфейса"
+guiLabel.Size = UDim2.new(1, -10, 0, 30)
+guiLabel.Position = UDim2.new(0, 5, 0, 10)
+guiLabel.BackgroundTransparency = 1
+guiLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+guiLabel.TextSize = 13
+guiLabel.Font = Enum.Font.GothamBold
+guiLabel.TextXAlignment = Enum.TextXAlignment.Left
+guiLabel.Parent = guiTab
+
+local csStyleBtn = Instance.new("TextButton")
+csStyleBtn.Name = "CSStyleButton"
+csStyleBtn.Text = "✓ CS:GO Стиль"
+csStyleBtn.Size = UDim2.new(1, -10, 0, 35)
+csStyleBtn.Position = UDim2.new(0, 5, 0, 45)
+csStyleBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+csStyleBtn.TextColor3 = Color3.fromRGB(15, 15, 15)
+csStyleBtn.TextSize = 11
+csStyleBtn.Font = Enum.Font.GothamBold
+csStyleBtn.BorderSizePixel = 0
+csStyleBtn.Parent = guiTab
+
+local csStyleBtnCorner = Instance.new("UICorner")
+csStyleBtnCorner.CornerRadius = UDim.new(0, 6)
+csStyleBtnCorner.Parent = csStyleBtn
+
+local panelStyleBtn = Instance.new("TextButton")
+panelStyleBtn.Name = "PanelStyleButton"
+panelStyleBtn.Text = "○ Panel Стиль"
+panelStyleBtn.Size = UDim2.new(1, -10, 0, 35)
+panelStyleBtn.Position = UDim2.new(0, 5, 0, 85)
+panelStyleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+panelStyleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+panelStyleBtn.TextSize = 11
+panelStyleBtn.Font = Enum.Font.GothamBold
+panelStyleBtn.BorderSizePixel = 0
+panelStyleBtn.Parent = guiTab
+
+local panelStyleBtnCorner = Instance.new("UICorner")
+panelStyleBtnCorner.CornerRadius = UDim.new(0, 6)
+panelStyleBtnCorner.Parent = panelStyleBtn
+
+-- ============================================
+-- ФУНКЦИИ ВКЛАДОК
+-- ============================================
+
+local function switchTab(tabName)
+    currentTab = tabName
+    
+    for _, tab in pairs(contentContainer:GetChildren()) do
+        if tab:IsA("Frame") then
+            tab.Visible = false
+        end
+    end
+    
+    contentContainer:FindFirstChild(tabName .. "Tab").Visible = true
+    
+    local tabIndex = table.find(tabsList, tabName)
+    local moveTween = TweenService:Create(
+        activeTabIndicator,
+        TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {Position = UDim2.new((tabIndex-1) * 0.25, 0, 1, -3)}
+    )
+    moveTween:Play()
+    
+    for name, btn in pairs(tabButtons) do
+        if name == tabName then
+            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        else
+            btn.TextColor3 = Color3.fromRGB(100, 100, 100)
+            btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        end
     end
 end
 
--- =========================
--- GUI PARENT
--- =========================
-local GuiParent
-do
-    local ok, coreGui = pcall(function()
-        return game:GetService("CoreGui")
-    end)
-    if ok and coreGui then
-        local canWrite = pcall(function()
-            local t = Instance.new("Frame")
-            t.Parent = coreGui
-            t:Destroy()
-        end)
-        GuiParent = canWrite and coreGui or PlayerGui
-    else
-        GuiParent = PlayerGui
-    end
+-- ============================================
+-- ФУНКЦИИ МЕНЮ
+-- ============================================
+
+local menuOpen = false
+
+local function openMenu()
+    if menuOpen then return end
+    menuOpen = true
+    
+    local openTween = TweenService:Create(
+        mainMenu,
+        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {Size = UDim2.new(0, 300, 0, 250)}
+    )
+    openTween:Play()
 end
 
--- =========================
--- HELPERS
--- =========================
-local function corner(r, p)
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(0, r)
-    c.Parent = p
-    return c
+local function closeMenu()
+    if not menuOpen then return end
+    menuOpen = false
+    
+    local closeTween = TweenService:Create(
+        mainMenu,
+        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+        {Size = UDim2.new(0, 300, 0, 0)}
+    )
+    closeTween:Play()
 end
 
-local function stroke(col, thick, p)
-    local s = Instance.new("UIStroke")
-    s.Color = col
-    s.Thickness = thick
-    s.Parent = p
-    return s
-end
+-- ============================================
+-- ФУНКЦИИ ПОИСКА ВРАГОВ
+-- ============================================
 
-local function tw(obj, t, props)
-    TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quint), props):Play()
-end
-
-local function showNotify(title, body, accent)
-    accent = accent or Cfg.Accent
-    local card = Instance.new("Frame")
-    card.Parent = ScreenGui
-    card.Size = UDim2.new(0, 250, 0, 48)
-    card.Position = UDim2.new(1, 20, 1, -62)
-    card.BackgroundColor3 = Cfg.NotifyBG
-    card.BorderSizePixel = 0
-    card.ZIndex = 90
-    corner(4, card)
-    stroke(Cfg.Border, 1, card)
-
-    local bar = Instance.new("Frame")
-    bar.Parent = card
-    bar.Size = UDim2.new(0, 2, 1, 0)
-    bar.BackgroundColor3 = accent
-    bar.BorderSizePixel = 0
-    bar.ZIndex = 91
-    corner(3, bar)
-
-    local tl = Instance.new("TextLabel")
-    tl.Parent = card
-    tl.Size = UDim2.new(1, -14, 0, 20)
-    tl.Position = UDim2.new(0, 11, 0, 6)
-    tl.BackgroundTransparency = 1
-    tl.Text = title
-    tl.TextColor3 = Cfg.White
-    tl.TextSize = 12
-    tl.Font = Enum.Font.GothamBold
-    tl.TextXAlignment = Enum.TextXAlignment.Left
-    tl.ZIndex = 91
-
-    local bl = Instance.new("TextLabel")
-    bl.Parent = card
-    bl.Size = UDim2.new(1, -14, 0, 16)
-    bl.Position = UDim2.new(0, 11, 0, 26)
-    bl.BackgroundTransparency = 1
-    bl.Text = body
-    bl.TextColor3 = Cfg.TextDim
-    bl.TextSize = 10
-    bl.Font = Enum.Font.Gotham
-    bl.TextXAlignment = Enum.TextXAlignment.Left
-    bl.ZIndex = 91
-
-    tw(card, 0.28, {Position = UDim2.new(1, -264, 1, -62)})
-    task.delay(3.2, function()
-        if card and card.Parent then
-            tw(card, 0.2, {Position = UDim2.new(1, 20, 1, -62)})
-            task.delay(0.22, function()
-                if card and card.Parent then
-                    card:Destroy()
+local function findNearbyTarget()
+    local nearestTarget = nil
+    local nearestDistance = _G.ResolverTargetDistance
+    
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local targetChar = otherPlayer.Character
+            local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+            local targetHumanoid = targetChar:FindFirstChild("Humanoid")
+            
+            if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
+                local distance = (rootPart.Position - targetRoot.Position).Magnitude
+                
+                if distance < nearestDistance then
+                    nearestDistance = distance
+                    nearestTarget = targetRoot
                 end
-            end)
+            end
         end
-    end)
-end
-
--- =========================
--- ROOT GUI
--- =========================
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = GUI_TAG
-ScreenGui.ResetOnSpawn = false
-ScreenGui.IgnoreGuiInset = true
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = GuiParent
-
--- =========================
--- MAIN WINDOW
--- =========================
-local WIN_W, WIN_H = 480, 300
-local SIDE_W = 130
-
-local MainFrame = Instance.new("CanvasGroup")
-MainFrame.Parent = ScreenGui
-MainFrame.Size = UDim2.new(0, WIN_W, 0, WIN_H)
-MainFrame.Position = UDim2.new(.5, -WIN_W/2, -1, 0)
-MainFrame.BackgroundColor3 = Cfg.BG
-MainFrame.BackgroundTransparency = 0.06
-MainFrame.GroupTransparency = 1
-MainFrame.BorderSizePixel = 0
-MainFrame.ZIndex = 10
-corner(12, MainFrame)
-stroke(Cfg.Border, 1, MainFrame)
-
-local Sidebar = Instance.new("Frame")
-Sidebar.Parent = MainFrame
-Sidebar.Size = UDim2.new(0, SIDE_W, 1, 0)
-Sidebar.BackgroundColor3 = Cfg.Sidebar
-Sidebar.BorderSizePixel = 0
-Sidebar.ZIndex = 11
-corner(12, Sidebar)
-
-local SFix = Instance.new("Frame")
-SFix.Parent = Sidebar
-SFix.Size = UDim2.new(0, 16, 1, 0)
-SFix.Position = UDim2.new(1, -16, 0, 0)
-SFix.BackgroundColor3 = Cfg.Sidebar
-SFix.BorderSizePixel = 0
-SFix.ZIndex = 12
-
-local SideLine = Instance.new("Frame")
-SideLine.Parent = MainFrame
-SideLine.Size = UDim2.new(0, 1, 1, 0)
-SideLine.Position = UDim2.new(0, SIDE_W, 0, 0)
-SideLine.BackgroundColor3 = Cfg.Border
-SideLine.BorderSizePixel = 0
-SideLine.ZIndex = 11
-
-local LogoX = Instance.new("TextLabel")
-LogoX.Parent = Sidebar
-LogoX.Size = UDim2.new(0, 32, 0, 32)
-LogoX.Position = UDim2.new(0, 12, 0, 14)
-LogoX.BackgroundTransparency = 1
-LogoX.Text = "x"
-LogoX.TextColor3 = Color3.fromRGB(135, 206, 250)
-LogoX.TextSize = 28
-LogoX.Font = Enum.Font.GothamBold
-LogoX.ZIndex = 13
-
-local LogoTxt = Instance.new("TextLabel")
-LogoTxt.Parent = Sidebar
-LogoTxt.Size = UDim2.new(1, -50, 0, 14)
-LogoTxt.Position = UDim2.new(0, 44, 0, 20)
-LogoTxt.BackgroundTransparency = 1
-LogoTxt.Text = "client"
-LogoTxt.TextColor3 = Cfg.TextMid
-LogoTxt.TextSize = 11
-LogoTxt.Font = Enum.Font.GothamBold
-LogoTxt.TextXAlignment = Enum.TextXAlignment.Left
-LogoTxt.ZIndex = 13
-
-local LogoVer = Instance.new("TextLabel")
-LogoVer.Parent = Sidebar
-LogoVer.Size = UDim2.new(1, 0, 0, 12)
-LogoVer.Position = UDim2.new(0, 12, 0, 46)
-LogoVer.BackgroundTransparency = 1
-LogoVer.Text = "v4.0"
-LogoVer.TextColor3 = Cfg.TextDim
-LogoVer.TextSize = 9
-LogoVer.Font = Enum.Font.Gotham
-LogoVer.TextXAlignment = Enum.TextXAlignment.Left
-LogoVer.ZIndex = 13
-
-local LogoDiv = Instance.new("Frame")
-LogoDiv.Parent = Sidebar
-LogoDiv.Size = UDim2.new(1, -20, 0, 1)
-LogoDiv.Position = UDim2.new(0, 10, 0, 64)
-LogoDiv.BackgroundColor3 = Cfg.Border
-LogoDiv.BorderSizePixel = 0
-LogoDiv.ZIndex = 13
-
-local ContentArea = Instance.new("Frame")
-ContentArea.Parent = MainFrame
-ContentArea.Size = UDim2.new(1, -SIDE_W - 1, 1, 0)
-ContentArea.Position = UDim2.new(0, SIDE_W + 1, 0, 0)
-ContentArea.BackgroundTransparency = 1
-ContentArea.BorderSizePixel = 0
-ContentArea.ZIndex = 11
-
--- =========================
--- SPLASH
--- =========================
-do
-    local Splash = Instance.new("Frame")
-    Splash.Parent = ScreenGui
-    Splash.Size = UDim2.new(1, 0, 1, 0)
-    Splash.BackgroundColor3 = Cfg.Black
-    Splash.BorderSizePixel = 0
-    Splash.ZIndex = 200
-
-    local SplashX = Instance.new("TextLabel")
-    SplashX.Parent = Splash
-    SplashX.Size = UDim2.new(0, 120, 0, 120)
-    SplashX.Position = UDim2.new(.5, -60, .5, -90)
-    SplashX.BackgroundTransparency = 1
-    SplashX.Text = "x"
-    SplashX.TextColor3 = Color3.fromRGB(135, 206, 250)
-    SplashX.TextTransparency = 1
-    SplashX.TextSize = 96
-    SplashX.Font = Enum.Font.GothamBold
-    SplashX.ZIndex = 201
-
-    local SplashName = Instance.new("TextLabel")
-    SplashName.Parent = Splash
-    SplashName.Size = UDim2.new(0, 300, 0, 28)
-    SplashName.Position = UDim2.new(.5, -150, .5, 38)
-    SplashName.BackgroundTransparency = 1
-    SplashName.Text = "xclient"
-    SplashName.TextColor3 = Cfg.White
-    SplashName.TextTransparency = 1
-    SplashName.TextSize = 22
-    SplashName.Font = Enum.Font.GothamBold
-    SplashName.ZIndex = 201
-
-    local SplashSub = Instance.new("TextLabel")
-    SplashSub.Parent = Splash
-    SplashSub.Size = UDim2.new(0, 300, 0, 18)
-    SplashSub.Position = UDim2.new(.5, -150, .5, 68)
-    SplashSub.BackgroundTransparency = 1
-    SplashSub.Text = "magic flight • v4.0"
-    SplashSub.TextColor3 = Cfg.TextDim
-    SplashSub.TextTransparency = 1
-    SplashSub.TextSize = 12
-    SplashSub.Font = Enum.Font.Gotham
-    SplashSub.ZIndex = 201
-
-    local SplashBar = Instance.new("Frame")
-    SplashBar.Parent = Splash
-    SplashBar.Size = UDim2.new(0, 0, 0, 1)
-    SplashBar.Position = UDim2.new(.5, -100, .5, 100)
-    SplashBar.BackgroundColor3 = Color3.fromRGB(135, 206, 250)
-    SplashBar.BorderSizePixel = 0
-    SplashBar.BackgroundTransparency = 1
-    SplashBar.ZIndex = 201
-
-    task.spawn(function()
-        task.wait(.15)
-        TweenService:Create(SplashX, TweenInfo.new(.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
-        task.wait(.2)
-        TweenService:Create(SplashName, TweenInfo.new(.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
-        TweenService:Create(SplashSub, TweenInfo.new(.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {TextTransparency = 0.4}):Play()
-        TweenService:Create(SplashBar, TweenInfo.new(.1), {BackgroundTransparency = 0}):Play()
-        task.wait(.3)
-        TweenService:Create(SplashBar, TweenInfo.new(.8, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.new(0, 200, 0, 1)}):Play()
-        task.wait(1.0)
-        TweenService:Create(SplashX, TweenInfo.new(.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {TextTransparency = 1}):Play()
-        TweenService:Create(SplashName, TweenInfo.new(.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {TextTransparency = 1}):Play()
-        TweenService:Create(SplashSub, TweenInfo.new(.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {TextTransparency = 1}):Play()
-        TweenService:Create(SplashBar, TweenInfo.new(.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
-        TweenService:Create(Splash, TweenInfo.new(.4, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
-        task.wait(.45)
-        if Splash and Splash.Parent then
-            Splash:Destroy()
-        end
-    end)
-end
-
--- =========================
--- ICON
--- =========================
-local IconBtn = Instance.new("TextButton")
-IconBtn.Parent = ScreenGui
-IconBtn.Size = UDim2.new(0, 52, 0, 52)
-IconBtn.Position = UDim2.new(0, 16, 0, 16)
-IconBtn.BackgroundColor3 = Cfg.Black
-IconBtn.BorderSizePixel = 0
-IconBtn.Text = ""
-IconBtn.AutoButtonColor = false
-IconBtn.ZIndex = 10
-corner(26, IconBtn)
-local IconRing = stroke(Cfg.Border, 1.5, IconBtn)
-
-local IconX = Instance.new("TextLabel")
-IconX.Parent = IconBtn
-IconX.Size = UDim2.new(1, 0, 1, 0)
-IconX.BackgroundTransparency = 1
-IconX.Text = "x"
-IconX.TextColor3 = Color3.fromRGB(135, 206, 250)
-IconX.TextSize = 26
-IconX.Font = Enum.Font.GothamBold
-IconX.ZIndex = 11
-
-IconBtn.MouseEnter:Connect(function()
-    tw(IconRing, .15, {Color = Color3.fromRGB(135, 206, 250)})
-    tw(IconX, .15, {TextColor3 = Cfg.White})
-end)
-IconBtn.MouseLeave:Connect(function()
-    tw(IconRing, .15, {Color = Cfg.Border})
-    tw(IconX, .15, {TextColor3 = Color3.fromRGB(135, 206, 250)})
-end)
-
--- =========================
--- TABS
--- =========================
-local TABS = {"MOV", "COM", "VISUAL", "GUI"}
-local TAB_ICONS = {MOV = "✈", COM = "⚙", VISUAL = "◈", GUI = "▣"}
-local tabPages = {}
-local tabBtns = {}
-local tabIndics = {}
-
-local sideY = 76
-for _, name in ipairs(TABS) do
-    local btn = Instance.new("TextButton")
-    btn.Parent = Sidebar
-    btn.Size = UDim2.new(1, -14, 0, 34)
-    btn.Position = UDim2.new(0, 7, 0, sideY)
-    btn.BackgroundTransparency = 1
-    btn.BorderSizePixel = 0
-    btn.Text = ""
-    btn.AutoButtonColor = false
-    btn.ZIndex = 13
-    corner(6, btn)
-
-    local bIcon = Instance.new("TextLabel")
-    bIcon.Parent = btn
-    bIcon.Size = UDim2.new(0, 22, 1, 0)
-    bIcon.Position = UDim2.new(0, 8, 0, 0)
-    bIcon.BackgroundTransparency = 1
-    bIcon.Text = TAB_ICONS[name] or "•"
-    bIcon.TextColor3 = Cfg.TextDim
-    bIcon.TextSize = 13
-    bIcon.Font = Enum.Font.Gotham
-    bIcon.ZIndex = 14
-
-    local bTxt = Instance.new("TextLabel")
-    bTxt.Parent = btn
-    bTxt.Size = UDim2.new(1, -38, 1, 0)
-    bTxt.Position = UDim2.new(0, 32, 0, 0)
-    bTxt.BackgroundTransparency = 1
-    bTxt.Text = name
-    bTxt.TextColor3 = Cfg.TextDim
-    bTxt.TextSize = 11
-    bTxt.Font = Enum.Font.GothamBold
-    bTxt.TextXAlignment = Enum.TextXAlignment.Left
-    bTxt.ZIndex = 14
-
-    local indic = Instance.new("Frame")
-    indic.Parent = btn
-    indic.Size = UDim2.new(0, 2, 0.55, 0)
-    indic.Position = UDim2.new(0, 0, 0.225, 0)
-    indic.BackgroundColor3 = Cfg.Accent
-    indic.BorderSizePixel = 0
-    indic.ZIndex = 14
-    indic.BackgroundTransparency = 1
-    corner(2, indic)
-
-    local page = Instance.new("ScrollingFrame")
-    page.Parent = ContentArea
-    page.Size = UDim2.new(1, 0, 1, 0)
-    page.BackgroundTransparency = 1
-    page.BorderSizePixel = 0
-    page.ScrollBarThickness = 2
-    page.ScrollBarImageColor3 = Cfg.BorderLight
-    page.CanvasSize = UDim2.new(0, 0, 0, 0)
-    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    page.Visible = false
-    page.ZIndex = 12
-
-    local lay = Instance.new("UIListLayout")
-    lay.Parent = page
-    lay.Padding = UDim.new(0, 0)
-    lay.SortOrder = Enum.SortOrder.LayoutOrder
-
-    local pad = Instance.new("UIPadding")
-    pad.Parent = page
-    pad.PaddingTop = UDim.new(0, 0)
-    pad.PaddingBottom = UDim.new(0, 8)
-
-    tabPages[name] = page
-    tabBtns[name] = {btn = btn, icon = bIcon, txt = bTxt}
-    tabIndics[name] = indic
-
-    sideY = sideY + 38
-end
-
--- =========================
--- PAGE HELPERS
--- =========================
-local function csSectionLabel(page, text, order)
-    local wrap = Instance.new("Frame")
-    wrap.Parent = page
-    wrap.Size = UDim2.new(1, 0, 0, 28)
-    wrap.BackgroundTransparency = 1
-    wrap.BorderSizePixel = 0
-    wrap.ZIndex = 13
-    wrap.LayoutOrder = order or #page:GetChildren()
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Parent = wrap
-    lbl.Size = UDim2.new(1, -16, 1, 0)
-    lbl.Position = UDim2.new(0, 12, 0, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = text:upper()
-    lbl.TextColor3 = Cfg.Accent
-    lbl.TextSize = 9
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 14
-
-    local div = Instance.new("Frame")
-    div.Parent = wrap
-    div.Size = UDim2.new(1, -12, 0, 1)
-    div.Position = UDim2.new(0, 6, 1, -1)
-    div.BackgroundColor3 = Cfg.Border
-    div.BorderSizePixel = 0
-    div.ZIndex = 14
-end
-
-local function csComingSoon(page, txt)
-    local f = Instance.new("Frame")
-    f.Parent = page
-    f.Size = UDim2.new(1, 0, 0, 80)
-    f.BackgroundTransparency = 1
-    f.BorderSizePixel = 0
-    f.ZIndex = 13
-    f.LayoutOrder = 1
-
-    local l = Instance.new("TextLabel")
-    l.Parent = f
-    l.Size = UDim2.new(1, 0, 1, 0)
-    l.BackgroundTransparency = 1
-    l.Text = txt or "coming soon"
-    l.TextColor3 = Cfg.TextDim
-    l.TextSize = 12
-    l.Font = Enum.Font.Gotham
-    l.ZIndex = 14
-end
-
-local function makeToggle(page, label, desc, default, cb, order)
-    local row = Instance.new("Frame")
-    row.Parent = page
-    row.Size = UDim2.new(1, 0, 0, 50)
-    row.BackgroundColor3 = Cfg.BG2
-    row.BorderSizePixel = 0
-    row.ZIndex = 13
-    row.LayoutOrder = order or #page:GetChildren()
-
-    local left = Instance.new("Frame")
-    left.Parent = row
-    left.Size = UDim2.new(0, 2, 0.6, 0)
-    left.Position = UDim2.new(0, 0, 0.2, 0)
-    left.BackgroundColor3 = Cfg.Border
-    left.BorderSizePixel = 0
-    left.ZIndex = 14
-    corner(2, left)
-
-    local lbl = Instance.new("TextLabel")
-    lbl.Parent = row
-    lbl.Size = UDim2.new(1, -62, 0, 20)
-    lbl.Position = UDim2.new(0, 12, 0, 8)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = label
-    lbl.TextColor3 = Cfg.Text
-    lbl.TextSize = 12
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 14
-
-    if desc and desc ~= "" then
-        local sub = Instance.new("TextLabel")
-        sub.Parent = row
-        sub.Size = UDim2.new(1, -62, 0, 14)
-        sub.Position = UDim2.new(0, 12, 0, 28)
-        sub.BackgroundTransparency = 1
-        sub.Text = desc
-        sub.TextColor3 = Cfg.TextDim
-        sub.TextSize = 9
-        sub.Font = Enum.Font.Gotham
-        sub.TextXAlignment = Enum.TextXAlignment.Left
-        sub.ZIndex = 14
     end
+    
+    for _, npc in pairs(workspace:GetDescendants()) do
+        if npc:IsA("Model") and npc ~= character then
+            local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+            local npcHumanoid = npc:FindFirstChild("Humanoid")
+            
+            if npcRoot and npcHumanoid and npcHumanoid.Health > 0 then
+                local distance = (rootPart.Position - npcRoot.Position).Magnitude
+                
+                if distance < nearestDistance then
+                    nearestDistance = distance
+                    nearestTarget = npcRoot
+                end
+            end
+        end
+    end
+    
+    return nearestTarget
+end
 
-    local pill = Instance.new("Frame")
-    pill.Parent = row
-    pill.Size = UDim2.new(0, 38, 0, 20)
-    pill.Position = UDim2.new(1, -50, 0.5, -10)
-    pill.BackgroundColor3 = Cfg.Border
-    pill.BorderSizePixel = 0
-    pill.ZIndex = 14
-    corner(10, pill)
+-- ============================================
+-- МЕХАНИКА ПОЛЕТА
+-- ============================================
 
-    local knob = Instance.new("Frame")
-    knob.Parent = pill
-    knob.Size = UDim2.new(0, 14, 0, 14)
-    knob.Position = UDim2.new(0, 3, 0.5, -7)
-    knob.BackgroundColor3 = Cfg.TextDim
-    knob.BorderSizePixel = 0
-    knob.ZIndex = 15
-    corner(7, knob)
+local function startFlying()
+    if isFlying then return end
+    isFlying = true
+    flightBtn.Text = "🚀 ПОЛЕТ: ВКЛ"
+    flightBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+    
+    createNotification("FLIGHT", "ПОЛЕТ АКТИВИРОВАН", "Режим полета включен. Space - вверх, Ctrl - вниз", 3)
+    
+    humanoid.PlatformStand = true
+    
+    flightConnection = RunService.Heartbeat:Connect(function()
+        if not character or not humanoid or humanoid.Health <= 0 then
+            stopFlying()
+            return
+        end
+        
+        local moveDirection = humanoid.MoveDirection
+        local inputDirection = Vector3.new(0, 0, 0)
+        
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            inputDirection = inputDirection + Vector3.new(0, 1, 0)
+        end
+        
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+            inputDirection = inputDirection + Vector3.new(0, -1, 0)
+        end
+        
+        local finalDirection = Vector3.new(0, 0, 0)
+        local currentSpeed = _G.FlightSpeed
+        
+        if _G.MagicResolverEnabled then
+            currentTarget = findNearbyTarget()
+            
+            if currentTarget then
+                local directionToTarget = (currentTarget.Position - rootPart.Position).Unit
+                local distanceToTarget = (currentTarget.Position - rootPart.Position).Magnitude
+                
+                if distanceToTarget <= _G.ResolverTargetDistance then
+                    finalDirection = directionToTarget
+                    currentSpeed = targetApproachSpeed
+                    
+                    if distanceToTarget <= _G.ResolverReturnDistance then
+                        finalDirection = -directionToTarget
+                        currentSpeed = _G.FlightSpeed * 0.8
+                    end
+                else
+                    finalDirection = camera.CFrame.LookVector + moveDirection + inputDirection
+                    if finalDirection.Magnitude > 0 then
+                        finalDirection = finalDirection.Unit
+                    end
+                end
+            else
+                finalDirection = camera.CFrame.LookVector + moveDirection + inputDirection
+                if finalDirection.Magnitude > 0 then
+                    finalDirection = finalDirection.Unit
+                end
+            end
+        else
+            finalDirection = camera.CFrame.LookVector + moveDirection + inputDirection
+            if finalDirection.Magnitude > 0 then
+                finalDirection = finalDirection.Unit
+            end
+        end
+        
+        swayOffset = swayOffset + (0.02 * swayDirection)
+        if swayOffset > 0.15 or swayOffset < -0.15 then
+            swayDirection = swayDirection * -1
+        end
+        
+        local newPosition = rootPart.Position + (finalDirection * currentSpeed * 0.016) + Vector3.new(0, swayOffset * 0.016, 0)
+        
+        rootPart.CFrame = rootPart.CFrame:Lerp(CFrame.new(newPosition) * CFrame.Angles(rootPart.CFrame:ToEulerAnglesXYZ()), 0.1)
+        
+        rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+    end)
+end
 
-    local state = default or false
-    local function refresh()
-        tw(pill, .18, {BackgroundColor3 = state and Cfg.Accent or Cfg.Border})
-        tw(knob, .18, {
-            Position = state and UDim2.new(0, 21, 0.5, -7) or UDim2.new(0, 3, 0.5, -7),
-            BackgroundColor3 = state and Cfg.White or Cfg.TextDim,
-        })
-        tw(left, .15, {BackgroundColor3 = state and Cfg.Accent or Cfg.Border}
+local function stopFlying()
+    if not isFlying then return end
+    isFlying = false
+    flightBtn.Text = "🚀 ПОЛЕТ: ВЫКЛ"
+    flightBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
+    
+    createNotification("FLIGHT", "ПОЛЕТ ДЕАКТИВИРОВАН", "Режим полета отключен", 2)
+    
+    if flightConnection then
+        flightConnection:Disconnect()
+        flightConnection = nil
+    end
+    
+    humanoid.PlatformStand = false
+    swayOffset = 0
+    swayDirection = 1
+    currentTarget = nil
+end
+
+-- ============================================
+-- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКИ
+-- ============================================
+
+for tabName, tabBtn in pairs(tabButtons) do
+    tabBtn.MouseButton1Click:Connect(function()
+        switchTab(tabName)
+    end)
+end
+
+-- ============================================
+-- ОБРАБОТЧИКИ СОБЫТИЙ - ЛОГОТИП
+-- ============================================
+
+logoContainer.MouseButton1Click:Connect(function()
+    if menuOpen then
+        closeMenu()
+    else
+        openMenu()
+    end
+end)
+
+-- ============================================
+-- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА MOV
+-- ============================================
+
+flightBtn.MouseButton1Click:Connect(function()
+    if isFlying then
+        stopFlying()
+    else
+        startFlying()
+    end
+end)
+
+speedSlider.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        local connection
+        connection = RunService.RenderStepped:Connect(function()
+            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+                local mousePos = UserInputService:GetMouseLocation()
+                local sliderPos = speedSlider.AbsolutePosition.X
+                local sliderSize = speedSlider.AbsoluteSize.X
+                local relativePos = math.clamp(mousePos.X - sliderPos, 0, sliderSize)
+                local percentage = relativePos / sliderSize
+                
+                _G.FlightSpeed = math.floor(percentage * 50)
+                targetApproachSpeed = _G.FlightSpeed * 1.3
+                
+                speedSliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+                speedLabel.Text = "Скорость: " .. _G.FlightSpeed
+            else
+                connection:Disconnect()
+            end
+        end)
+    end
+end)
+
+-- ============================================
+-- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА COM
+-- ============================================
+
+resolverBtn.MouseButton1Click:Connect(function()
+    _G.MagicResolverEnabled = not _G.MagicResolverEnabled
+    
+    if _G.MagicResolverEnabled then
+        resolverBtn.Text = "✨ RESOLVER: ВКЛ"
+        resolverBtn.BackgroundColor3 = Color3.fromRGB(150, 100, 200)
+        createNotification("RESOLVER", "RESOLVER АКТИВИРОВАН", "Magic Resolver включен. Автоматический поиск врагов в радиусе " .. _G.ResolverTargetDistance .. " стадов", 3)
+    else
+        resolverBtn.Text = "✨ RESOLVER: ВЫКЛ"
+        resolverBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
+        createNotification("RESOLVER", "RESOLVER ДЕАКТИВИРОВАН", "Magic Resolver отключен", 2)
+        currentTarget = nil
+    end
+end)
+
+-- ============================================
+-- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА VISUAL
+-- ============================================
+
+local particlesEnabled = true
+local trailEnabled = true
+
+particlesBtn.MouseButton1Click:Connect(function()
+    particlesEnabled = not particlesEnabled
+    
+    if particlesEnabled then
+        particlesBtn.Text = "✓ Частицы: ВКЛ"
+        particlesBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
+        createNotification("VISUAL", "ЧАСТИЦЫ ВКЛЮЧЕНЫ", "Визуальные эффекты частиц активированы", 2)
+    else
+        particlesBtn.Text = "○ Частицы: ВЫКЛ"
+        particlesBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+        createNotification("VISUAL", "ЧАСТИЦЫ ОТКЛЮЧЕНЫ", "Визуальные эффекты частиц деактивированы", 2)
+    end
+end)
+
+trailBtn.MouseButton1Click:Connect(function()
+    trailEnabled = not trailEnabled
+    
+    if trailEnabled then
+        trailBtn.Text = "✓ След: ВКЛ"
+        trailBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
+        createNotification("VISUAL", "СЛЕД ВКЛЮЧЕН", "Визуальный след полета активирован", 2)
+    else
+        trailBtn.Text = "○ След: ВЫКЛ"
+        trailBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
+        createNotification("VISUAL", "СЛЕД ОТКЛЮЧЕН", "Визуальный след полета деактивирован", 2)
+    end
+end)
+
+-- ============================================
+-- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА GUI
+-- ============================================
+
+csStyleBtn.MouseButton1Click:Connect(function()
+    _G.GUIStyle = "CS"
+    
+    csStyleBtn.Text = "✓ CS:GO Стиль"
+    csStyleBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+    csStyleBtn.TextColor3 = Color3.fromRGB(15, 15, 15)
+    
+    panelStyleBtn.Text = "○ Panel Стиль"
+    panelStyleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    panelStyleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+    
+    createNotification("GUI", "СТИЛЬ ИЗМЕНЕН", "Интерфейс переключен на CS:GO стиль", 2)
+end)
+
+panelStyleBtn.MouseButton1Click:Connect(function()
+    _G.GUIStyle = "PANEL"
+    
+    panelStyleBtn.Text = "✓ Panel Стиль"
+    panelStyleBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+    panelStyleBtn.TextColor3 = Color3.fromRGB(15, 15, 15)
+    
+    csStyleBtn.Text = "○ CS:GO Стиль"
+    csStyleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    csStyleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
+    
+    createNotification("GUI", "СТИЛЬ ИЗМЕНЕН", "Интерфейс переключен на Panel стиль", 2)
+end)
+
+-- ============================================
+-- ОБРАБОТЧИКИ СОБЫТИЙ - СМЕРТЬ ПЕРСОНАЖА
+-- ============================================
+
+humanoid.Died:Connect(function()
+    stopFlying()
+    createNotification("ERROR", "ПЕРСОНАЖ ПОГИБ", "Система полета отключена", 2)
+    task.wait(1)
+    screenGui:Destroy()
+end)
+
+-- ============================================
+-- ИНИЦИАЛИЗАЦИЯ
+-- ============================================
+
+showLoadingScreen()
+
+task.wait(2.5)
+
+createNotification("SYSTEM", "XCLIENT ЗАГРУЖЕНА", "Система магического полета готова к использованию", 4)
+createNotification("INFO", "УПРАВЛЕНИЕ", "Нажми на логотип X для открытия меню", 3)
+
+-- Инициализируем первую вкладку
+switchTab("MOV")
+
+print("✅ XClient Magic Flight System загружена!")
+print("📱 Нажми на логотип X слева сверху для открытия меню")
+print("⚡ Скорость полета: " .. _G.FlightSpeed .. " studs/sec")
+print("✨ Magic Resolver: " .. (_G.MagicResolverEnabled and "ВКЛ" or "ВЫКЛ"))
+print("🎨 Стиль интерфейса: " .. _G.GUIStyle)
