@@ -1,933 +1,998 @@
--- ============================================
--- XCLIENT MAGIC FLIGHT С СИСТЕМОЙ ВКЛАДОК
--- ============================================
+--[[
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                  xclient — MAGIC FLIGHT  v5.0               ║
+    ║              Delta · Xeno · Fluxus · Codex · KRNL           ║
+    ║  MOV: Magic Flight · Resolver · Damage Fly · Speed          ║
+    ║  COM: SmartDodge                                            ║
+    ╚══════════════════════════════════════════════════════════════╝
+    ЗАПУСК: вставь в executor -> Execute
+    ПК: ПРОБЕЛ вверх | SHIFT вниз
+--]]
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
+-- ══ ЗАЩИТА ══════════════════════════════════════════════════════
+local ENV=(typeof(getgenv)=="function" and pcall(getgenv) and getgenv()) or _G
+if ENV.xclient_v5 then
+    local function kill(par,n) if par then local o=par:FindFirstChild(n);if o then o:Destroy() end end end
+    local lp=game:GetService("Players").LocalPlayer
+    kill(lp and lp:FindFirstChild("PlayerGui"),"xclient_v5")
+    pcall(function() kill(game:GetService("CoreGui"),"xclient_v5") end)
+end
+ENV.xclient_v5=true
 
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local rootPart = character:WaitForChild("HumanoidRootPart")
-local camera = workspace.CurrentCamera
+-- ══ СЕРВИСЫ ══════════════════════════════════════════════════════
+local Players=game:GetService("Players")
+local RunService=game:GetService("RunService")
+local TweenService=game:GetService("TweenService")
+local UserInputService=game:GetService("UserInputService")
+local Workspace=game:GetService("Workspace")
 
--- ============================================
--- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ
--- ============================================
+-- ══ ОБЪЕКТЫ ══════════════════════════════════════════════════════
+local LP=Players.LocalPlayer
+local Camera=Workspace.CurrentCamera
+local Char=LP.Character or LP.CharacterAdded:Wait()
+local Hum=Char:WaitForChild("Humanoid")
+local Root=Char:WaitForChild("HumanoidRootPart")
 
-_G.FlightSpeed = _G.FlightSpeed or 16
-_G.MagicResolverEnabled = _G.MagicResolverEnabled or false
-_G.ResolverTargetDistance = 12
-_G.ResolverReturnDistance = 10
-_G.GUIStyle = _G.GUIStyle or "CS"
-
-local isFlying = false
-local flightConnection = nil
-local swayOffset = 0
-local swayDirection = 1
-local currentTarget = nil
-local targetApproachSpeed = _G.FlightSpeed * 1.3
-local currentTab = "MOV"
-
--- ============================================
--- ТИПЫ УВЕДОМЛЕНИЙ
--- ============================================
-
-local NotificationTypes = {
-    SUCCESS = {color = Color3.fromRGB(50, 200, 100), icon = "✓"},
-    ERROR = {color = Color3.fromRGB(200, 50, 50), icon = "✕"},
-    WARNING = {color = Color3.fromRGB(255, 165, 0), icon = "⚠"},
-    INFO = {color = Color3.fromRGB(100, 200, 255), icon = "ℹ"},
-    FLIGHT = {color = Color3.fromRGB(150, 100, 200), icon = "🚀"},
-    RESOLVER = {color = Color3.fromRGB(200, 150, 100), icon = "✨"},
-    SYSTEM = {color = Color3.fromRGB(100, 100, 100), icon = "⚙"}
+-- ══ ЦВЕТА И КОНФИГ ═══════════════════════════════════════════════
+local C={
+    FlySpeed=18,VertSpeed=10,LerpA=0.20,
+    WA=0.08,WF=1.6,DA=0.06,DMin=0.4,DMax=1.1,DL=0.04,
+    SA=0.03,SF=4.2,SP=3.0,
+    RDet=13,RSafe=10,RRise=15,RSink=6,RLerp=0.08,RBoost=1.35,
+    DFDrain=10,DFRegen=5,
+    XBlue=Color3.fromRGB(135,206,250),
+    Acc=Color3.fromRGB(0,160,255),AccRes=Color3.fromRGB(255,195,65),
+    AccGui=Color3.fromRGB(160,130,255),AccCom=Color3.fromRGB(255,100,100),
+    BG=Color3.fromRGB(22,22,28),BG2=Color3.fromRGB(16,16,20),
+    BG3=Color3.fromRGB(30,30,38),BG4=Color3.fromRGB(12,12,16),
+    Side=Color3.fromRGB(10,10,14),
+    Txt=Color3.fromRGB(210,210,220),TxtD=Color3.fromRGB(88,88,106),
+    TxtM=Color3.fromRGB(140,140,155),
+    Bdr=Color3.fromRGB(40,40,52),BdrL=Color3.fromRGB(60,60,78),
+    Blk=Color3.fromRGB(0,0,0),Wht=Color3.fromRGB(255,255,255),
+    NtfBG=Color3.fromRGB(12,12,16),
 }
 
-local function createNotification(notifType, title, message, duration)
-    notifType = notifType or "INFO"
-    duration = duration or 3
-    
-    local typeData = NotificationTypes[notifType] or NotificationTypes.INFO
-    
-    local notifContainer = Instance.new("Frame")
-    notifContainer.Name = "Notification_" .. tick()
-    notifContainer.Size = UDim2.new(0, 350, 0, 0)
-    notifContainer.Position = UDim2.new(0, 20, 1, -100)
-    notifContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    notifContainer.BorderSizePixel = 2
-    notifContainer.BorderColor3 = typeData.color
-    notifContainer.Parent = screenGui
-    
-    local notifCorner = Instance.new("UICorner")
-    notifCorner.CornerRadius = UDim.new(0, 8)
-    notifCorner.Parent = notifContainer
-    
-    local leftBar = Instance.new("Frame")
-    leftBar.Name = "LeftBar"
-    leftBar.Size = UDim2.new(0, 4, 1, 0)
-    leftBar.BackgroundColor3 = typeData.color
-    leftBar.BorderSizePixel = 0
-    leftBar.Parent = notifContainer
-    
-    local iconLabel = Instance.new("TextLabel")
-    iconLabel.Name = "Icon"
-    iconLabel.Text = typeData.icon
-    iconLabel.Size = UDim2.new(0, 40, 0, 40)
-    iconLabel.Position = UDim2.new(0, 10, 0, 10)
-    iconLabel.BackgroundTransparency = 1
-    iconLabel.TextColor3 = typeData.color
-    iconLabel.TextSize = 20
-    iconLabel.Font = Enum.Font.GothamBold
-    iconLabel.Parent = notifContainer
-    
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Name = "Title"
-    titleLabel.Text = title
-    titleLabel.Size = UDim2.new(1, -60, 0, 25)
-    titleLabel.Position = UDim2.new(0, 55, 0, 10)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    titleLabel.TextSize = 14
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.Parent = notifContainer
-    
-    local messageLabel = Instance.new("TextLabel")
-    messageLabel.Name = "Message"
-    messageLabel.Text = message
-    messageLabel.Size = UDim2.new(1, -60, 0, 30)
-    messageLabel.Position = UDim2.new(0, 55, 0, 35)
-    messageLabel.BackgroundTransparency = 1
-    messageLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-    messageLabel.TextSize = 12
-    messageLabel.Font = Enum.Font.Gotham
-    messageLabel.TextXAlignment = Enum.TextXAlignment.Left
-    messageLabel.TextWrapped = true
-    messageLabel.Parent = notifContainer
-    
-    local progressBar = Instance.new("Frame")
-    progressBar.Name = "ProgressBar"
-    progressBar.Size = UDim2.new(1, 0, 0, 2)
-    progressBar.Position = UDim2.new(0, 0, 1, -2)
-    progressBar.BackgroundColor3 = typeData.color
-    progressBar.BorderSizePixel = 0
-    progressBar.Parent = notifContainer
-    
-    local appearTween = TweenService:Create(
-        notifContainer,
-        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {Size = UDim2.new(0, 350, 0, 80)}
-    )
-    appearTween:Play()
-    
-    local progressTween = TweenService:Create(
-        progressBar,
-        TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut),
-        {Size = UDim2.new(0, 0, 0, 2)}
-    )
-    progressTween:Play()
-    
-    task.wait(duration)
-    
-    local disappearTween = TweenService:Create(
-        notifContainer,
-        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-        {Size = UDim2.new(0, 350, 0, 0)}
-    )
-    disappearTween:Play()
-    
-    disappearTween.Completed:Connect(function()
-        notifContainer:Destroy()
-    end)
-end
+-- ══ СОСТОЯНИЕ ════════════════════════════════════════════════════
+local flying=false;local flyConn=nil
+local resolverOn=false;local resActive=false;local resVel=0
+local dfOn=false;local dfActive=false;local dfCharge=100
+local dfConn=nil;local dfDmgConn=nil
+local speedConn=nil;local jumpConn=nil;local speedMode="collision"
+local spCfg={
+    collision={radius=8,speed=32},
+    minijump={power=18,rate=0.18},
+    selfpush={speed=55}
+}
+local dodgeCfg={
+    Enabled=false,Radius=18,PredictTime=0.28,
+    BaseForce=18,SpeedMultiplier=0.45,Cooldown=0.35
+}
+local lastDodge=0
+local menuOpen=false;local guiStyle="cs";local activeTab="MOV"
+local wT=0;local sT=0;local dC=0;local dTgt=0;local dTmr=0;local dIvl=0.7
 
--- ============================================
--- СОЗДАНИЕ ОСНОВНОГО GUI
--- ============================================
-
-local screenGui = player:WaitForChild("PlayerGui"):FindFirstChild("XClientGui")
-if screenGui then
-    screenGui:Destroy()
-end
-
-screenGui = Instance.new("ScreenGui")
-screenGui.Name = "XClientGui"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
-
--- ============================================
--- ЛОГОТИП XCLIENT
--- ============================================
-
-local logoContainer = Instance.new("Frame")
-logoContainer.Name = "LogoContainer"
-logoContainer.Size = UDim2.new(0, 60, 0, 60)
-logoContainer.Position = UDim2.new(0, 15, 0, 15)
-logoContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-logoContainer.BorderSizePixel = 0
-logoContainer.Parent = screenGui
-
-local logoCorner = Instance.new("UICorner")
-logoCorner.CornerRadius = UDim.new(1, 0)
-logoCorner.Parent = logoContainer
-
-local logoText = Instance.new("TextLabel")
-logoText.Name = "LogoText"
-logoText.Text = "X"
-logoText.Size = UDim2.new(1, 0, 1, 0)
-logoText.BackgroundTransparency = 1
-logoText.TextColor3 = Color3.fromRGB(255, 255, 255)
-logoText.TextSize = 32
-logoText.Font = Enum.Font.GothamBold
-logoText.Parent = logoContainer
-
-local logoLabel = Instance.new("TextLabel")
-logoLabel.Name = "LogoLabel"
-logoLabel.Text = "XCLIENT"
-logoLabel.Size = UDim2.new(0, 60, 0, 20)
-logoLabel.Position = UDim2.new(0, 0, 1, 5)
-logoLabel.BackgroundTransparency = 1
-logoLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-logoLabel.TextSize = 10
-logoLabel.Font = Enum.Font.GothamBold
-logoLabel.Parent = logoContainer
-
--- ============================================
--- ЭКРАН ЗАГРУЗКИ
--- ============================================
-
-local function showLoadingScreen()
-    local loadingBg = Instance.new("Frame")
-    loadingBg.Name = "LoadingScreen"
-    loadingBg.Size = UDim2.new(1, 0, 1, 0)
-    loadingBg.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-    loadingBg.BackgroundTransparency = 0.3
-    loadingBg.BorderSizePixel = 0
-    loadingBg.Parent = screenGui
-    
-    local loadingContainer = Instance.new("Frame")
-    loadingContainer.Name = "LoadingContainer"
-    loadingContainer.Size = UDim2.new(0, 150, 0, 150)
-    loadingContainer.Position = UDim2.new(0.5, -75, 0.5, -75)
-    loadingContainer.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    loadingContainer.BorderSizePixel = 2
-    loadingContainer.BorderColor3 = Color3.fromRGB(100, 200, 255)
-    loadingContainer.Parent = loadingBg
-    
-    local loadingCorner = Instance.new("UICorner")
-    loadingCorner.CornerRadius = UDim.new(0, 12)
-    loadingCorner.Parent = loadingContainer
-    
-    local loadingText = Instance.new("TextLabel")
-    loadingText.Name = "LoadingText"
-    loadingText.Text = "XCLIENT"
-    loadingText.Size = UDim2.new(1, 0, 0, 60)
-    loadingText.Position = UDim2.new(0, 0, 0, 20)
-    loadingText.BackgroundTransparency = 1
-    loadingText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    loadingText.TextSize = 24
-    loadingText.Font = Enum.Font.GothamBold
-    loadingText.Parent = loadingContainer
-    
-    local statusText = Instance.new("TextLabel")
-    statusText.Name = "StatusText"
-    statusText.Text = "Загрузка..."
-    statusText.Size = UDim2.new(1, 0, 0, 30)
-    statusText.Position = UDim2.new(0, 0, 0, 80)
-    statusText.BackgroundTransparency = 1
-    statusText.TextColor3 = Color3.fromRGB(100, 200, 255)
-    statusText.TextSize = 12
-    statusText.Font = Enum.Font.Gotham
-    statusText.Parent = loadingContainer
-    
-    local rotation = 0
-    local rotationConnection
-    rotationConnection = RunService.RenderStepped:Connect(function()
-        rotation = rotation + 5
-        loadingContainer.Rotation = rotation
-    end)
-    
-    task.wait(2)
-    
-    local fadeTween = TweenService:Create(
-        loadingBg,
-        TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-        {BackgroundTransparency = 1}
-    )
-    fadeTween:Play()
-    
-    rotationConnection:Disconnect()
-    
-    fadeTween.Completed:Connect(function()
-        loadingBg:Destroy()
-    end)
-end
-
--- ============================================
--- ГЛАВНОЕ МЕНЮ С ВКЛАДКАМИ
--- ============================================
-
-local mainMenu = Instance.new("Frame")
-mainMenu.Name = "MainMenu"
-mainMenu.Size = UDim2.new(0, 300, 0, 0)
-mainMenu.Position = UDim2.new(1, -320, 0, 90)
-mainMenu.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-mainMenu.BackgroundTransparency = 0.1
-mainMenu.BorderSizePixel = 2
-mainMenu.BorderColor3 = Color3.fromRGB(100, 200, 255)
-mainMenu.Parent = screenGui
-
-local menuCorner = Instance.new("UICorner")
-menuCorner.CornerRadius = UDim.new(0, 8)
-menuCorner.Parent = mainMenu
-
--- ============================================
--- СИСТЕМА ВКЛАДОК
--- ============================================
-
-local tabsContainer = Instance.new("Frame")
-tabsContainer.Name = "TabsContainer"
-tabsContainer.Size = UDim2.new(1, 0, 0, 35)
-tabsContainer.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-tabsContainer.BorderSizePixel = 0
-tabsContainer.Parent = mainMenu
-
-local tabsList = {"MOV", "COM", "VISUAL", "GUI"}
-local tabButtons = {}
-
-for i, tabName in ipairs(tabsList) do
-    local tabBtn = Instance.new("TextButton")
-    tabBtn.Name = tabName .. "Tab"
-    tabBtn.Text = tabName
-    tabBtn.Size = UDim2.new(0.25, 0, 1, 0)
-    tabBtn.Position = UDim2.new((i-1) * 0.25, 0, 0, 0)
-    tabBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    tabBtn.TextColor3 = Color3.fromRGB(100, 100, 100)
-    tabBtn.TextSize = 12
-    tabBtn.Font = Enum.Font.GothamBold
-    tabBtn.BorderSizePixel = 0
-    tabBtn.Parent = tabsContainer
-    
-    tabButtons[tabName] = tabBtn
-end
-
--- Активная вкладка (подсветка)
-local activeTabIndicator = Instance.new("Frame")
-activeTabIndicator.Name = "ActiveTabIndicator"
-activeTabIndicator.Size = UDim2.new(0.25, 0, 0, 3)
-activeTabIndicator.Position = UDim2.new(0, 0, 1, -3)
-activeTabIndicator.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
-activeTabIndicator.BorderSizePixel = 0
-activeTabIndicator.Parent = tabsContainer
-
--- ============================================
--- СОДЕРЖИМОЕ ВКЛАДОК
--- ============================================
-
-local contentContainer = Instance.new("Frame")
-contentContainer.Name = "ContentContainer"
-contentContainer.Size = UDim2.new(1, 0, 1, -35)
-contentContainer.Position = UDim2.new(0, 0, 0, 35)
-contentContainer.BackgroundTransparency = 1
-contentContainer.BorderSizePixel = 0
-contentContainer.Parent = mainMenu
-
--- ============================================
--- ВКЛАДКА MOV (ДВИЖЕНИЕ)
--- ============================================
-
-local movTab = Instance.new("Frame")
-movTab.Name = "MOVTab"
-movTab.Size = UDim2.new(1, 0, 1, 0)
-movTab.BackgroundTransparency = 1
-movTab.BorderSizePixel = 0
-movTab.Parent = contentContainer
-movTab.Visible = true
-
-local flightBtn = Instance.new("TextButton")
-flightBtn.Name = "FlightButton"
-flightBtn.Text = "🚀 ПОЛЕТ: ВЫКЛ"
-flightBtn.Size = UDim2.new(1, -10, 0, 40)
-flightBtn.Position = UDim2.new(0, 5, 0, 10)
-flightBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
-flightBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-flightBtn.TextSize = 12
-flightBtn.Font = Enum.Font.GothamBold
-flightBtn.BorderSizePixel = 0
-flightBtn.Parent = movTab
-
-local flightBtnCorner = Instance.new("UICorner")
-flightBtnCorner.CornerRadius = UDim.new(0, 6)
-flightBtnCorner.Parent = flightBtn
-
-local speedLabel = Instance.new("TextLabel")
-speedLabel.Name = "SpeedLabel"
-speedLabel.Text = "Скорость: " .. _G.FlightSpeed
-speedLabel.Size = UDim2.new(1, -10, 0, 25)
-speedLabel.Position = UDim2.new(0, 5, 0, 55)
-speedLabel.BackgroundTransparency = 1
-speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-speedLabel.TextSize = 11
-speedLabel.Font = Enum.Font.Gotham
-speedLabel.TextXAlignment = Enum.TextXAlignment.Left
-speedLabel.Parent = movTab
-
-local speedSlider = Instance.new("Frame")
-speedSlider.Name = "SpeedSlider"
-speedSlider.Size = UDim2.new(1, -10, 0, 6)
-speedSlider.Position = UDim2.new(0, 5, 0, 82)
-speedSlider.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-speedSlider.BorderSizePixel = 0
-speedSlider.Parent = movTab
-
-local speedSliderCorner = Instance.new("UICorner")
-speedSliderCorner.CornerRadius = UDim.new(0, 3)
-speedSliderCorner.Parent = speedSlider
-
-local speedSliderFill = Instance.new("Frame")
-speedSliderFill.Name = "Fill"
-speedSliderFill.Size = UDim2.new((_G.FlightSpeed / 50), 0, 1, 0)
-speedSliderFill.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
-speedSliderFill.BorderSizePixel = 0
-speedSliderFill.Parent = speedSlider
-
-local speedSliderCorner2 = Instance.new("UICorner")
-speedSliderCorner2.CornerRadius = UDim.new(0, 3)
-speedSliderCorner2.Parent = speedSliderFill
--- ============================================
--- ВКЛАДКА COM (КОМАНДЫ)
--- ============================================
-
-local comTab = Instance.new("Frame")
-comTab.Name = "COMTab"
-comTab.Size = UDim2.new(1, 0, 1, 0)
-comTab.BackgroundTransparency = 1
-comTab.BorderSizePixel = 0
-comTab.Parent = contentContainer
-comTab.Visible = false
-
-local resolverBtn = Instance.new("TextButton")
-resolverBtn.Name = "ResolverButton"
-resolverBtn.Text = "✨ RESOLVER: ВЫКЛ"
-resolverBtn.Size = UDim2.new(1, -10, 0, 40)
-resolverBtn.Position = UDim2.new(0, 5, 0, 10)
-resolverBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
-resolverBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-resolverBtn.TextSize = 12
-resolverBtn.Font = Enum.Font.GothamBold
-resolverBtn.BorderSizePixel = 0
-resolverBtn.Parent = comTab
-
-local resolverBtnCorner = Instance.new("UICorner")
-resolverBtnCorner.CornerRadius = UDim.new(0, 6)
-resolverBtnCorner.Parent = resolverBtn
-
-local resolverInfo = Instance.new("TextLabel")
-resolverInfo.Name = "ResolverInfo"
-resolverInfo.Text = "Радиус: " .. _G.ResolverTargetDistance .. " studs\nОтступление: " .. _G.ResolverReturnDistance .. " studs"
-resolverInfo.Size = UDim2.new(1, -10, 0, 50)
-resolverInfo.Position = UDim2.new(0, 5, 0, 55)
-resolverInfo.BackgroundTransparency = 1
-resolverInfo.TextColor3 = Color3.fromRGB(180, 180, 180)
-resolverInfo.TextSize = 11
-resolverInfo.Font = Enum.Font.Gotham
-resolverInfo.TextXAlignment = Enum.TextXAlignment.Left
-resolverInfo.TextWrapped = true
-resolverInfo.Parent = comTab
-
--- ============================================
--- ВКЛАДКА VISUAL (ВИЗУАЛЬНЫЕ ЭФФЕКТЫ)
--- ============================================
-
-local visualTab = Instance.new("Frame")
-visualTab.Name = "VISUALTab"
-visualTab.Size = UDim2.new(1, 0, 1, 0)
-visualTab.BackgroundTransparency = 1
-visualTab.BorderSizePixel = 0
-visualTab.Parent = contentContainer
-visualTab.Visible = false
-
-local visualLabel = Instance.new("TextLabel")
-visualLabel.Name = "VisualLabel"
-visualLabel.Text = "Визуальные эффекты"
-visualLabel.Size = UDim2.new(1, -10, 0, 30)
-visualLabel.Position = UDim2.new(0, 5, 0, 10)
-visualLabel.BackgroundTransparency = 1
-visualLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-visualLabel.TextSize = 13
-visualLabel.Font = Enum.Font.GothamBold
-visualLabel.TextXAlignment = Enum.TextXAlignment.Left
-visualLabel.Parent = visualTab
-
-local particlesBtn = Instance.new("TextButton")
-particlesBtn.Name = "ParticlesButton"
-particlesBtn.Text = "✓ Частицы: ВКЛ"
-particlesBtn.Size = UDim2.new(1, -10, 0, 35)
-particlesBtn.Position = UDim2.new(0, 5, 0, 45)
-particlesBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
-particlesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-particlesBtn.TextSize = 11
-particlesBtn.Font = Enum.Font.GothamBold
-particlesBtn.BorderSizePixel = 0
-particlesBtn.Parent = visualTab
-
-local particlesBtnCorner = Instance.new("UICorner")
-particlesBtnCorner.CornerRadius = UDim.new(0, 6)
-particlesBtnCorner.Parent = particlesBtn
-
-local trailBtn = Instance.new("TextButton")
-trailBtn.Name = "TrailButton"
-trailBtn.Text = "✓ След: ВКЛ"
-trailBtn.Size = UDim2.new(1, -10, 0, 35)
-trailBtn.Position = UDim2.new(0, 5, 0, 85)
-trailBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
-trailBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-trailBtn.TextSize = 11
-trailBtn.Font = Enum.Font.GothamBold
-trailBtn.BorderSizePixel = 0
-trailBtn.Parent = visualTab
-
-local trailBtnCorner = Instance.new("UICorner")
-trailBtnCorner.CornerRadius = UDim.new(0, 6)
-trailBtnCorner.Parent = trailBtn
-
--- ============================================
--- ВКЛАДКА GUI (ИНТЕРФЕЙС)
--- ============================================
-
-local guiTab = Instance.new("Frame")
-guiTab.Name = "GUITab"
-guiTab.Size = UDim2.new(1, 0, 1, 0)
-guiTab.BackgroundTransparency = 1
-guiTab.BorderSizePixel = 0
-guiTab.Parent = contentContainer
-guiTab.Visible = false
-
-local guiLabel = Instance.new("TextLabel")
-guiLabel.Name = "GUILabel"
-guiLabel.Text = "Стиль интерфейса"
-guiLabel.Size = UDim2.new(1, -10, 0, 30)
-guiLabel.Position = UDim2.new(0, 5, 0, 10)
-guiLabel.BackgroundTransparency = 1
-guiLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-guiLabel.TextSize = 13
-guiLabel.Font = Enum.Font.GothamBold
-guiLabel.TextXAlignment = Enum.TextXAlignment.Left
-guiLabel.Parent = guiTab
-
-local csStyleBtn = Instance.new("TextButton")
-csStyleBtn.Name = "CSStyleButton"
-csStyleBtn.Text = "✓ CS:GO Стиль"
-csStyleBtn.Size = UDim2.new(1, -10, 0, 35)
-csStyleBtn.Position = UDim2.new(0, 5, 0, 45)
-csStyleBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
-csStyleBtn.TextColor3 = Color3.fromRGB(15, 15, 15)
-csStyleBtn.TextSize = 11
-csStyleBtn.Font = Enum.Font.GothamBold
-csStyleBtn.BorderSizePixel = 0
-csStyleBtn.Parent = guiTab
-
-local csStyleBtnCorner = Instance.new("UICorner")
-csStyleBtnCorner.CornerRadius = UDim.new(0, 6)
-csStyleBtnCorner.Parent = csStyleBtn
-
-local panelStyleBtn = Instance.new("TextButton")
-panelStyleBtn.Name = "PanelStyleButton"
-panelStyleBtn.Text = "○ Panel Стиль"
-panelStyleBtn.Size = UDim2.new(1, -10, 0, 35)
-panelStyleBtn.Position = UDim2.new(0, 5, 0, 85)
-panelStyleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-panelStyleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-panelStyleBtn.TextSize = 11
-panelStyleBtn.Font = Enum.Font.GothamBold
-panelStyleBtn.BorderSizePixel = 0
-panelStyleBtn.Parent = guiTab
-
-local panelStyleBtnCorner = Instance.new("UICorner")
-panelStyleBtnCorner.CornerRadius = UDim.new(0, 6)
-panelStyleBtnCorner.Parent = panelStyleBtn
-
--- ============================================
--- ФУНКЦИИ ВКЛАДОК
--- ============================================
-
-local function switchTab(tabName)
-    currentTab = tabName
-    
-    for _, tab in pairs(contentContainer:GetChildren()) do
-        if tab:IsA("Frame") then
-            tab.Visible = false
-        end
-    end
-    
-    contentContainer:FindFirstChild(tabName .. "Tab").Visible = true
-    
-    local tabIndex = table.find(tabsList, tabName)
-    local moveTween = TweenService:Create(
-        activeTabIndicator,
-        TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {Position = UDim2.new((tabIndex-1) * 0.25, 0, 1, -3)}
-    )
-    moveTween:Play()
-    
-    for name, btn in pairs(tabButtons) do
-        if name == tabName then
-            btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        else
-            btn.TextColor3 = Color3.fromRGB(100, 100, 100)
-            btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        end
+-- ══ GUI PARENT ═══════════════════════════════════════════════════
+local GuiParent=LP:WaitForChild("PlayerGui")
+do
+    local ok,cg=pcall(function() return game:GetService("CoreGui") end)
+    if ok and cg then
+        local cw=pcall(function()
+            local t=Instance.new("Frame");t.Parent=cg;t:Destroy()
+        end)
+        if cw then GuiParent=cg end
     end
 end
 
--- ============================================
--- ФУНКЦИИ МЕНЮ
--- ============================================
+-- ══ SCREENGUI ════════════════════════════════════════════════════
+local SG=Instance.new("ScreenGui")
+SG.Name="xclient_v5";SG.ResetOnSpawn=false
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+SG.Parent=GuiParent
 
-local menuOpen = false
-
-local function openMenu()
-    if menuOpen then return end
-    menuOpen = true
-    
-    local openTween = TweenService:Create(
-        mainMenu,
-        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {Size = UDim2.new(0, 300, 0, 250)}
-    )
-    openTween:Play()
+-- ══ УТИЛИТЫ ══════════════════════════════════════════════════════
+local function cr(r,p) local c=Instance.new("UICorner",p);c.CornerRadius=UDim.new(0,r);return c end
+local function st(col,t,p) local s=Instance.new("UIStroke",p);s.Color=col;s.Thickness=t;return s end
+local function tw(o,t,pr) TweenService:Create(o,TweenInfo.new(t,Enum.EasingStyle.Quint),pr):Play() end
+local function mkLbl(par,txt,sz,fnt,col,xal)
+    local l=Instance.new("TextLabel",par)
+    l.BackgroundTransparency=1;l.Text=txt;l.TextSize=sz
+    l.Font=fnt or Enum.Font.Gotham;l.TextColor3=col or C.Txt
+    l.TextXAlignment=xal or Enum.TextXAlignment.Center
+    l.ZIndex=(par.ZIndex or 10)+1;return l
 end
 
-local function closeMenu()
-    if not menuOpen then return end
-    menuOpen = false
-    
-    local closeTween = TweenService:Create(
-        mainMenu,
-        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-        {Size = UDim2.new(0, 300, 0, 0)}
-    )
-    closeTween:Play()
-end
+-- ══ СПЛЭШ ════════════════════════════════════════════════════════
+local Spl=Instance.new("Frame",SG)
+Spl.Size=UDim2.new(1,0,1,0);Spl.BackgroundColor3=C.Blk
+Spl.BorderSizePixel=0;Spl.ZIndex=200
 
--- ============================================
--- ФУНКЦИИ ПОИСКА ВРАГОВ
--- ============================================
+local SplX=mkLbl(Spl,"x",90,Enum.Font.GothamBold,C.XBlue)
+SplX.Size=UDim2.new(0,140,0,110);SplX.Position=UDim2.new(.5,-70,.5,-95)
+SplX.TextTransparency=1;SplX.ZIndex=201
 
-local function findNearbyTarget()
-    local nearestTarget = nil
-    local nearestDistance = _G.ResolverTargetDistance
-    
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= player and otherPlayer.Character then
-            local targetChar = otherPlayer.Character
-            local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-            local targetHumanoid = targetChar:FindFirstChild("Humanoid")
-            
-            if targetRoot and targetHumanoid and targetHumanoid.Health > 0 then
-                local distance = (rootPart.Position - targetRoot.Position).Magnitude
-                
-                if distance < nearestDistance then
-                    nearestDistance = distance
-                    nearestTarget = targetRoot
-                end
-            end
-        end
-    end
-    
-    for _, npc in pairs(workspace:GetDescendants()) do
-        if npc:IsA("Model") and npc ~= character then
-            local npcRoot = npc:FindFirstChild("HumanoidRootPart")
-            local npcHumanoid = npc:FindFirstChild("Humanoid")
-            
-            if npcRoot and npcHumanoid and npcHumanoid.Health > 0 then
-                local distance = (rootPart.Position - npcRoot.Position).Magnitude
-                
-                if distance < nearestDistance then
-                    nearestDistance = distance
-                    nearestTarget = npcRoot
-                end
-            end
-        end
-    end
-    
-    return nearestTarget
-end
+local SplN=mkLbl(Spl,"xclient",22,Enum.Font.GothamBold,C.Wht)
+SplN.Size=UDim2.new(0,300,0,30);SplN.Position=UDim2.new(.5,-150,.5,26)
+SplN.TextTransparency=1;SplN.ZIndex=201
 
--- ============================================
--- МЕХАНИКА ПОЛЕТА
--- ============================================
+local SplS=mkLbl(Spl,"magic flight  •  v5.0",12,Enum.Font.Gotham,C.TxtD)
+SplS.Size=UDim2.new(0,300,0,18);SplS.Position=UDim2.new(.5,-150,.5,58)
+SplS.TextTransparency=1;SplS.ZIndex=201
 
-local function startFlying()
-    if isFlying then return end
-    isFlying = true
-    flightBtn.Text = "🚀 ПОЛЕТ: ВКЛ"
-    flightBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
-    
-    createNotification("FLIGHT", "ПОЛЕТ АКТИВИРОВАН", "Режим полета включен. Space - вверх, Ctrl - вниз", 3)
-    
-    humanoid.PlatformStand = true
-    
-    flightConnection = RunService.Heartbeat:Connect(function()
-        if not character or not humanoid or humanoid.Health <= 0 then
-            stopFlying()
-            return
-        end
-        
-        local moveDirection = humanoid.MoveDirection
-        local inputDirection = Vector3.new(0, 0, 0)
-        
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            inputDirection = inputDirection + Vector3.new(0, 1, 0)
-        end
-        
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-            inputDirection = inputDirection + Vector3.new(0, -1, 0)
-        end
-        
-        local finalDirection = Vector3.new(0, 0, 0)
-        local currentSpeed = _G.FlightSpeed
-        
-        if _G.MagicResolverEnabled then
-            currentTarget = findNearbyTarget()
-            
-            if currentTarget then
-                local directionToTarget = (currentTarget.Position - rootPart.Position).Unit
-                local distanceToTarget = (currentTarget.Position - rootPart.Position).Magnitude
-                
-                if distanceToTarget <= _G.ResolverTargetDistance then
-                    finalDirection = directionToTarget
-                    currentSpeed = targetApproachSpeed
-                    
-                    if distanceToTarget <= _G.ResolverReturnDistance then
-                        finalDirection = -directionToTarget
-                        currentSpeed = _G.FlightSpeed * 0.8
-                    end
-                else
-                    finalDirection = camera.CFrame.LookVector + moveDirection + inputDirection
-                    if finalDirection.Magnitude > 0 then
-                        finalDirection = finalDirection.Unit
-                    end
-                end
-            else
-                finalDirection = camera.CFrame.LookVector + moveDirection + inputDirection
-                if finalDirection.Magnitude > 0 then
-                    finalDirection = finalDirection.Unit
-                end
-            end
-        else
-            finalDirection = camera.CFrame.LookVector + moveDirection + inputDirection
-            if finalDirection.Magnitude > 0 then
-                finalDirection = finalDirection.Unit
-            end
-        end
-        
-        swayOffset = swayOffset + (0.02 * swayDirection)
-        if swayOffset > 0.15 or swayOffset < -0.15 then
-            swayDirection = swayDirection * -1
-        end
-        
-        local newPosition = rootPart.Position + (finalDirection * currentSpeed * 0.016) + Vector3.new(0, swayOffset * 0.016, 0)
-        
-        rootPart.CFrame = rootPart.CFrame:Lerp(CFrame.new(newPosition) * CFrame.Angles(rootPart.CFrame:ToEulerAnglesXYZ()), 0.1)
-        
-        rootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-    end)
-end
+local SplBar=Instance.new("Frame",Spl)
+SplBar.Size=UDim2.new(0,0,0,1);SplBar.Position=UDim2.new(.5,-100,.5,90)
+SplBar.BackgroundColor3=C.XBlue;SplBar.BorderSizePixel=0
+SplBar.BackgroundTransparency=1;SplBar.ZIndex=201
 
-local function stopFlying()
-    if not isFlying then return end
-    isFlying = false
-    flightBtn.Text = "🚀 ПОЛЕТ: ВЫКЛ"
-    flightBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
-    
-    createNotification("FLIGHT", "ПОЛЕТ ДЕАКТИВИРОВАН", "Режим полета отключен", 2)
-    
-    if flightConnection then
-        flightConnection:Disconnect()
-        flightConnection = nil
-    end
-    
-    humanoid.PlatformStand = false
-    swayOffset = 0
-    swayDirection = 1
-    currentTarget = nil
-end
-
--- ============================================
--- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКИ
--- ============================================
-
-for tabName, tabBtn in pairs(tabButtons) do
-    tabBtn.MouseButton1Click:Connect(function()
-        switchTab(tabName)
-    end)
-end
-
--- ============================================
--- ОБРАБОТЧИКИ СОБЫТИЙ - ЛОГОТИП
--- ============================================
-
-logoContainer.MouseButton1Click:Connect(function()
-    if menuOpen then
-        closeMenu()
-    else
-        openMenu()
-    end
+task.spawn(function()
+    task.wait(.1)
+    TweenService:Create(SplX,TweenInfo.new(.5,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    task.wait(.2)
+    TweenService:Create(SplN,TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    TweenService:Create(SplS,TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0.4}):Play()
+    TweenService:Create(SplBar,TweenInfo.new(.1),{BackgroundTransparency=0}):Play()
+    task.wait(.3)
+    TweenService:Create(SplBar,TweenInfo.new(.8,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,200,0,1)}):Play()
+    task.wait(1.0)
+    TweenService:Create(SplX,TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplN,TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplS,TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenService:Create(SplBar,TweenInfo.new(.25,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
+    TweenService:Create(Spl,TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
+    task.wait(.45);if Spl and Spl.Parent then Spl:Destroy() end
 end)
 
--- ============================================
--- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА MOV
--- ============================================
-
-flightBtn.MouseButton1Click:Connect(function()
-    if isFlying then
-        stopFlying()
-    else
-        startFlying()
+-- ══ УВЕДОМЛЕНИЯ ══════════════════════════════════════════════════
+local ntfStack={}
+local NW,NH,NG,NRP,NBP=254,48,6,14,14
+local function notify(title,body,acc)
+    acc=acc or C.Acc
+    for _,f in ipairs(ntfStack) do
+        tw(f,.18,{Position=UDim2.new(1,-(NW+NRP),1,f.Position.Y.Offset-(NH+NG))})
     end
-end)
+    local card=Instance.new("Frame",SG)
+    card.Size=UDim2.new(0,NW,0,NH)
+    card.Position=UDim2.new(1,22,1,-(NH+NBP))
+    card.BackgroundColor3=C.NtfBG;card.BorderSizePixel=0;card.ZIndex=90
+    cr(4,card);st(C.Bdr,1,card)
+    local bar=Instance.new("Frame",card)
+    bar.Size=UDim2.new(0,2,1,0);bar.BackgroundColor3=acc
+    bar.BorderSizePixel=0;bar.ZIndex=91;cr(2,bar)
+    local tl=mkLbl(card,title,12,Enum.Font.GothamBold,C.Wht,Enum.TextXAlignment.Left)
+    tl.Size=UDim2.new(1,-14,0,20);tl.Position=UDim2.new(0,11,0,7);tl.ZIndex=91
+    local bl=mkLbl(card,body,10,Enum.Font.Gotham,C.TxtD,Enum.TextXAlignment.Left)
+    bl.Size=UDim2.new(1,-14,0,16);bl.Position=UDim2.new(0,11,0,27);bl.ZIndex=91
+    TweenService:Create(card,TweenInfo.new(.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out),
+        {Position=UDim2.new(1,-(NW+NRP),1,-(NH+NBP))}):Play()
+    table.insert(ntfStack,card)
+    task.delay(3.5,function()
+        for i,c in ipairs(ntfStack) do if c==card then table.remove(ntfStack,i) break end end
+        if not(card and card.Parent) then return end
+        tw(card,.22,{Position=UDim2.new(1,22,1,card.Position.Y.Offset)})
+        task.wait(.25);if card and card.Parent then card:Destroy() end
+    end)
+end
 
-speedSlider.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local connection
-        connection = RunService.RenderStepped:Connect(function()
-            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-                local mousePos = UserInputService:GetMouseLocation()
-                local sliderPos = speedSlider.AbsolutePosition.X
-                local sliderSize = speedSlider.AbsoluteSize.X
-                local relativePos = math.clamp(mousePos.X - sliderPos, 0, sliderSize)
-                local percentage = relativePos / sliderSize
-                
-                _G.FlightSpeed = math.floor(percentage * 50)
-                targetApproachSpeed = _G.FlightSpeed * 1.3
-                
-                speedSliderFill.Size = UDim2.new(percentage, 0, 1, 0)
-                speedLabel.Text = "Скорость: " .. _G.FlightSpeed
-            else
-                connection:Disconnect()
-            end
+-- ══ ИКОНКА X ════════════════════════════════════════════════════
+local IconBtn=Instance.new("TextButton",SG)
+IconBtn.Size=UDim2.new(0,52,0,52);IconBtn.Position=UDim2.new(0,16,0,16)
+IconBtn.BackgroundColor3=C.Blk;IconBtn.BorderSizePixel=0
+IconBtn.Text="";IconBtn.AutoButtonColor=false;IconBtn.ZIndex=10
+cr(26,IconBtn)
+local IconRing=st(C.Bdr,1.8,IconBtn)
+local IconX=mkLbl(IconBtn,"x",26,Enum.Font.GothamBold,C.XBlue)
+IconX.Size=UDim2.new(1,0,1,0);IconX.ZIndex=11
+IconBtn.MouseEnter:Connect(function() tw(IconRing,.15,{Color=C.XBlue});tw(IconX,.15,{TextColor3=C.Wht}) end)
+IconBtn.MouseLeave:Connect(function() tw(IconRing,.15,{Color=C.Bdr});tw(IconX,.15,{TextColor3=C.XBlue}) end)
+
+-- ══ ГЛАВНОЕ ОКНО ═════════════════════════════════════════════════
+local WIN_W,WIN_H,SIDE_W=480,310,130
+local MainFrame=Instance.new("CanvasGroup",SG)
+MainFrame.Size=UDim2.new(0,WIN_W,0,WIN_H)
+MainFrame.Position=UDim2.new(.5,-WIN_W/2,-1,0)
+MainFrame.BackgroundColor3=C.BG
+MainFrame.BackgroundTransparency=0.06
+MainFrame.GroupTransparency=1
+MainFrame.BorderSizePixel=0;MainFrame.ZIndex=10
+local MainCr=cr(12,MainFrame);st(C.Bdr,1,MainFrame)
+
+local Side=Instance.new("Frame",MainFrame)
+Side.Size=UDim2.new(0,SIDE_W,1,0);Side.BackgroundColor3=C.Side
+Side.BorderSizePixel=0;Side.ZIndex=11;cr(12,Side)
+local SideFix=Instance.new("Frame",Side)
+SideFix.Size=UDim2.new(0,14,1,0);SideFix.Position=UDim2.new(1,-14,0,0)
+SideFix.BackgroundColor3=C.Side;SideFix.BorderSizePixel=0;SideFix.ZIndex=12
+local SDiv=Instance.new("Frame",MainFrame)
+SDiv.Size=UDim2.new(0,1,1,0);SDiv.Position=UDim2.new(0,SIDE_W,0,0)
+SDiv.BackgroundColor3=C.Bdr;SDiv.BorderSizePixel=0;SDiv.ZIndex=11
+
+local LogoX=mkLbl(Side,"x",26,Enum.Font.GothamBold,C.XBlue)
+LogoX.Size=UDim2.new(0,30,0,30);LogoX.Position=UDim2.new(0,10,0,12);LogoX.ZIndex=13
+local LogoW=mkLbl(Side,"client",11,Enum.Font.GothamBold,C.TxtM,Enum.TextXAlignment.Left)
+LogoW.Size=UDim2.new(1,-46,0,14);LogoW.Position=UDim2.new(0,42,0,18);LogoW.ZIndex=13
+local LogoV=mkLbl(Side,"v5.0",9,Enum.Font.Gotham,C.TxtD,Enum.TextXAlignment.Left)
+LogoV.Size=UDim2.new(1,0,0,12);LogoV.Position=UDim2.new(0,10,0,44);LogoV.ZIndex=13
+local LogoDiv=Instance.new("Frame",Side)
+LogoDiv.Size=UDim2.new(1,-18,0,1);LogoDiv.Position=UDim2.new(0,9,0,62)
+LogoDiv.BackgroundColor3=C.Bdr;LogoDiv.BorderSizePixel=0;LogoDiv.ZIndex=13
+
+local Content=Instance.new("Frame",MainFrame)
+Content.Size=UDim2.new(1,-SIDE_W-1,1,0)
+Content.Position=UDim2.new(0,SIDE_W+1,0,0)
+Content.BackgroundTransparency=1;Content.BorderSizePixel=0;Content.ZIndex=11
+
+-- ══ ВКЛАДКИ ══════════════════════════════════════════════════════
+local TABS={"MOV","COM","VISUAL","GUI"}
+local TAB_ICO={MOV="✈",COM="⚔",VISUAL="◈",GUI="▣"}
+local tabPages={};local tabBtns={};local tabIndics={}
+local sideY=74
+
+for _,name in ipairs(TABS) do
+    local btn=Instance.new("TextButton",Side)
+    btn.Size=UDim2.new(1,-14,0,34);btn.Position=UDim2.new(0,7,0,sideY)
+    btn.BackgroundTransparency=1;btn.BorderSizePixel=0
+    btn.Text="";btn.AutoButtonColor=false;btn.ZIndex=13;cr(6,btn)
+    local ico=mkLbl(btn,TAB_ICO[name] or "•",13,Enum.Font.Gotham,C.TxtD)
+    ico.Size=UDim2.new(0,22,1,0);ico.Position=UDim2.new(0,8,0,0);ico.ZIndex=14
+    local tx=mkLbl(btn,name,11,Enum.Font.GothamBold,C.TxtD,Enum.TextXAlignment.Left)
+    tx.Size=UDim2.new(1,-36,1,0);tx.Position=UDim2.new(0,32,0,0);tx.ZIndex=14
+    local ind=Instance.new("Frame",btn)
+    ind.Size=UDim2.new(0,2,0.55,0);ind.Position=UDim2.new(0,0,0.225,0)
+    ind.BackgroundColor3=C.Acc;ind.BorderSizePixel=0;ind.ZIndex=14
+    ind.BackgroundTransparency=1;cr(2,ind)
+    local pg=Instance.new("ScrollingFrame",Content)
+    pg.Size=UDim2.new(1,0,1,0);pg.BackgroundTransparency=1
+    pg.BorderSizePixel=0;pg.ScrollBarThickness=2
+    pg.ScrollBarImageColor3=C.BdrL
+    pg.CanvasSize=UDim2.new(0,0,0,0)
+    pg.AutomaticCanvasSize=Enum.AutomaticSize.Y
+    pg.Visible=false;pg.ZIndex=12
+    local lay=Instance.new("UIListLayout",pg)
+    lay.Padding=UDim.new(0,0);lay.SortOrder=Enum.SortOrder.LayoutOrder
+    Instance.new("UIPadding",pg).PaddingBottom=UDim.new(0,8)
+    tabPages[name]=pg;tabBtns[name]={btn=btn,ico=ico,tx=tx};tabIndics[name]=ind
+    sideY=sideY+38
+end
+
+local function switchTab(name)
+    activeTab=name
+    for _,n in ipairs(TABS) do
+        local a=(n==name);local d=tabBtns[n]
+        tw(d.btn,.15,{BackgroundTransparency=a and 0.82 or 1,BackgroundColor3=a and C.BG3 or C.BG})
+        tw(d.ico,.15,{TextColor3=a and C.XBlue or C.TxtD})
+        tw(d.tx,.15,{TextColor3=a and C.Wht or C.TxtD})
+        tw(tabIndics[n],.15,{BackgroundTransparency=a and 0 or 1})
+        tabPages[n].Visible=a
+    end
+end
+for _,n in ipairs(TABS) do
+    tabBtns[n].btn.MouseButton1Click:Connect(function() switchTab(n) end)
+    tabBtns[n].btn.MouseEnter:Connect(function()
+        if activeTab~=n then tw(tabBtns[n].tx,.1,{TextColor3=C.TxtM}) end
+    end)
+    tabBtns[n].btn.MouseLeave:Connect(function()
+        if activeTab~=n then tw(tabBtns[n].tx,.1,{TextColor3=C.TxtD}) end
+    end)
+end
+-- ══ ФАБРИКИ ══════════════════════════════════════════════════════
+local function secLabel(pg,txt,ord)
+    local w=Instance.new("Frame",pg)
+    w.Size=UDim2.new(1,0,0,26);w.BackgroundTransparency=1
+    w.BorderSizePixel=0;w.ZIndex=13;w.LayoutOrder=ord or #pg:GetChildren()
+    local l=mkLbl(w,txt:upper(),9,Enum.Font.GothamBold,C.Acc,Enum.TextXAlignment.Left)
+    l.Size=UDim2.new(1,-12,1,0);l.Position=UDim2.new(0,12,0,0);l.ZIndex=14
+    local dv=Instance.new("Frame",w)
+    dv.Size=UDim2.new(1,-12,0,1);dv.Position=UDim2.new(0,6,1,-1)
+    dv.BackgroundColor3=C.Bdr;dv.BorderSizePixel=0;dv.ZIndex=14
+end
+
+local function mkToggle(pg,label,desc,def,cb,ord)
+    local row=Instance.new("Frame",pg)
+    row.Size=UDim2.new(1,0,0,52);row.BackgroundColor3=C.BG2
+    row.BorderSizePixel=0;row.ZIndex=13;row.LayoutOrder=ord or #pg:GetChildren()
+    local bar=Instance.new("Frame",row)
+    bar.Size=UDim2.new(0,2,0.6,0);bar.Position=UDim2.new(0,0,0.2,0)
+    bar.BackgroundColor3=C.Bdr;bar.BorderSizePixel=0;bar.ZIndex=14;cr(2,bar)
+    local tl=mkLbl(row,label,12,Enum.Font.GothamBold,C.Txt,Enum.TextXAlignment.Left)
+    tl.Size=UDim2.new(1,-62,0,20);tl.Position=UDim2.new(0,12,0,8);tl.ZIndex=14
+    local sl=mkLbl(row,desc,9,Enum.Font.Gotham,C.TxtD,Enum.TextXAlignment.Left)
+    sl.Size=UDim2.new(1,-62,0,14);sl.Position=UDim2.new(0,12,0,28);sl.ZIndex=14
+    local pill=Instance.new("Frame",row)
+    pill.Size=UDim2.new(0,38,0,20);pill.Position=UDim2.new(1,-50,0.5,-10)
+    pill.BackgroundColor3=C.Bdr;pill.BorderSizePixel=0;pill.ZIndex=14;cr(10,pill)
+    local knob=Instance.new("Frame",pill)
+    knob.Size=UDim2.new(0,14,0,14);knob.Position=UDim2.new(0,3,0.5,-7)
+    knob.BackgroundColor3=C.TxtD;knob.BorderSizePixel=0;knob.ZIndex=15;cr(7,knob)
+    local s2=def or false
+    local function rp()
+        tw(pill,.18,{BackgroundColor3=s2 and C.Acc or C.Bdr})
+        tw(knob,.18,{Position=s2 and UDim2.new(0,21,0.5,-7) or UDim2.new(0,3,0.5,-7),
+            BackgroundColor3=s2 and C.Wht or C.TxtD})
+        tw(bar,.15,{BackgroundColor3=s2 and C.Acc or C.Bdr})
+    end
+    rp()
+    local b=Instance.new("TextButton",row)
+    b.Size=UDim2.new(1,0,1,0);b.BackgroundTransparency=1;b.Text="";b.ZIndex=15
+    b.MouseButton1Click:Connect(function() s2=not s2;rp();cb(s2) end)
+    row.MouseEnter:Connect(function() tw(row,.1,{BackgroundColor3=C.BG3}) end)
+    row.MouseLeave:Connect(function() tw(row,.1,{BackgroundColor3=C.BG2}) end)
+    local dv=Instance.new("Frame",row)
+    dv.Size=UDim2.new(1,0,0,1);dv.Position=UDim2.new(0,0,1,-1)
+    dv.BackgroundColor3=C.Bdr;dv.BorderSizePixel=0;dv.ZIndex=13
+end
+
+local function mkToggleGear(pg,label,desc,ord,onTog,onGear)
+    local row=Instance.new("Frame",pg)
+    row.Size=UDim2.new(1,0,0,52);row.BackgroundColor3=C.BG2
+    row.BorderSizePixel=0;row.ZIndex=13;row.LayoutOrder=ord or #pg:GetChildren()
+    local bar=Instance.new("Frame",row)
+    bar.Size=UDim2.new(0,2,0.6,0);bar.Position=UDim2.new(0,0,0.2,0)
+    bar.BackgroundColor3=C.Bdr;bar.BorderSizePixel=0;bar.ZIndex=14;cr(2,bar)
+    local tl=mkLbl(row,label,12,Enum.Font.GothamBold,C.Txt,Enum.TextXAlignment.Left)
+    tl.Size=UDim2.new(1,-110,0,20);tl.Position=UDim2.new(0,12,0,8);tl.ZIndex=14
+    local sl=mkLbl(row,desc,9,Enum.Font.Gotham,C.TxtD,Enum.TextXAlignment.Left)
+    sl.Size=UDim2.new(1,-110,0,14);sl.Position=UDim2.new(0,12,0,28);sl.ZIndex=14
+    local pill=Instance.new("Frame",row)
+    pill.Size=UDim2.new(0,38,0,20);pill.Position=UDim2.new(1,-96,0.5,-10)
+    pill.BackgroundColor3=C.Bdr;pill.BorderSizePixel=0;pill.ZIndex=14;cr(10,pill)
+    local knob=Instance.new("Frame",pill)
+    knob.Size=UDim2.new(0,14,0,14);knob.Position=UDim2.new(0,3,0.5,-7)
+    knob.BackgroundColor3=C.TxtD;knob.BorderSizePixel=0;knob.ZIndex=15;cr(7,knob)
+    local gear=Instance.new("TextButton",row)
+    gear.Size=UDim2.new(0,34,0,26);gear.Position=UDim2.new(1,-42,0.5,-13)
+    gear.BackgroundColor3=C.BG3;gear.BorderSizePixel=0
+    gear.Text="⚙";gear.TextColor3=C.TxtD;gear.TextSize=14;gear.Font=Enum.Font.Gotham
+    gear.AutoButtonColor=false;gear.ZIndex=15;cr(6,gear)
+    gear.MouseButton1Click:Connect(onGear)
+    gear.MouseEnter:Connect(function() tw(gear,.1,{BackgroundColor3=C.BG2,TextColor3=C.Acc}) end)
+    gear.MouseLeave:Connect(function() tw(gear,.1,{BackgroundColor3=C.BG3,TextColor3=C.TxtD}) end)
+    local s2=false
+    local function rp()
+        tw(pill,.18,{BackgroundColor3=s2 and C.Acc or C.Bdr})
+        tw(knob,.18,{Position=s2 and UDim2.new(0,21,0.5,-7) or UDim2.new(0,3,0.5,-7),
+            BackgroundColor3=s2 and C.Wht or C.TxtD})
+        tw(bar,.15,{BackgroundColor3=s2 and C.Acc or C.Bdr})
+    end
+    rp()
+    local holdT=nil;local isHold=false
+    local b=Instance.new("TextButton",row)
+    b.Size=UDim2.new(1,-46,1,0);b.BackgroundTransparency=1;b.Text="";b.ZIndex=15
+    b.MouseButton1Click:Connect(function()
+        if isHold then isHold=false;return end
+        s2=not s2;rp();onTog(s2)
+    end)
+    b.MouseButton1Down:Connect(function()
+        isHold=false
+        holdT=task.delay(.5,function() isHold=true;onGear() end)
+    end)
+    b.MouseButton1Up:Connect(function()
+        if holdT then task.cancel(holdT);holdT=nil end
+    end)
+    b.TouchLongPress:Connect(function() isHold=true;onGear() end)
+    row.MouseEnter:Connect(function() tw(row,.1,{BackgroundColor3=C.BG3}) end)
+    row.MouseLeave:Connect(function() tw(row,.1,{BackgroundColor3=C.BG2}) end)
+    local dv=Instance.new("Frame",row)
+    dv.Size=UDim2.new(1,0,0,1);dv.Position=UDim2.new(0,0,1,-1)
+    dv.BackgroundColor3=C.Bdr;dv.BorderSizePixel=0;dv.ZIndex=13
+end
+
+local function mkSlider(pg,label,mn,mx,cur,fmt,cb,ord)
+    fmt=fmt or "%d"
+    local row=Instance.new("Frame",pg)
+    row.Size=UDim2.new(1,0,0,52);row.BackgroundColor3=C.BG3
+    row.BorderSizePixel=0;row.ZIndex=13;row.LayoutOrder=ord or #pg:GetChildren();cr(6,row)
+    local tl=mkLbl(row,label,11,Enum.Font.GothamBold,C.Txt,Enum.TextXAlignment.Left)
+    tl.Size=UDim2.new(1,-54,0,18);tl.Position=UDim2.new(0,10,0,6);tl.ZIndex=14
+    local vl=mkLbl(row,string.format(fmt,cur),11,Enum.Font.GothamBold,C.Acc,Enum.TextXAlignment.Right)
+    vl.Size=UDim2.new(0,44,0,18);vl.Position=UDim2.new(1,-52,0,6);vl.ZIndex=14
+    local trk=Instance.new("Frame",row)
+    trk.Size=UDim2.new(1,-20,0,4);trk.Position=UDim2.new(0,10,0,36)
+    trk.BackgroundColor3=C.Bdr;trk.BorderSizePixel=0;trk.ZIndex=14;cr(2,trk)
+    local fill=Instance.new("Frame",trk)
+    fill.Size=UDim2.new((cur-mn)/(mx-mn),0,1,0)
+    fill.BackgroundColor3=C.Acc;fill.BorderSizePixel=0;fill.ZIndex=15;cr(2,fill)
+    local knob=Instance.new("Frame",trk)
+    knob.Size=UDim2.new(0,14,0,14);knob.AnchorPoint=Vector2.new(.5,.5)
+    knob.Position=UDim2.new((cur-mn)/(mx-mn),0,.5,0)
+    knob.BackgroundColor3=C.Wht;knob.BorderSizePixel=0;knob.ZIndex=16;cr(7,knob)
+    local val=cur;local drag=false
+    local function upd(ax)
+        local ta=trk.AbsolutePosition.X;local tw2=trk.AbsoluteSize.X
+        local r=math.clamp((ax-ta)/tw2,0,1)
+        val=mn+math.floor((mx-mn)*r+.5)
+        fill.Size=UDim2.new(r,0,1,0);knob.Position=UDim2.new(r,0,.5,0)
+        vl.Text=string.format(fmt,val);cb(val)
+    end
+    local function startDrag(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then drag=true;upd(i.Position.X) end
+    end
+    knob.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then drag=true end
+    end)
+    trk.InputBegan:Connect(startDrag)
+    UserInputService.InputChanged:Connect(function(i)
+        if drag and(i.UserInputType==Enum.UserInputType.MouseMovement
+        or i.UserInputType==Enum.UserInputType.Touch) then upd(i.Position.X) end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+    end)
+end
+
+local function mkSubPanel(title)
+    local p=Instance.new("Frame",Content)
+    p.Size=UDim2.new(1,0,1,0);p.BackgroundColor3=C.BG
+    p.BorderSizePixel=0;p.ZIndex=30;p.Visible=false;cr(8,p)
+    local hd=Instance.new("Frame",p)
+    hd.Size=UDim2.new(1,0,0,32);hd.BackgroundColor3=C.BG2
+    hd.BorderSizePixel=0;hd.ZIndex=31;cr(8,hd)
+    local hdFix=Instance.new("Frame",hd)
+    hdFix.Size=UDim2.new(1,0,0,16);hdFix.Position=UDim2.new(0,0,1,-16)
+    hdFix.BackgroundColor3=C.BG2;hdFix.BorderSizePixel=0;hdFix.ZIndex=31
+    local back=Instance.new("TextButton",hd)
+    back.Size=UDim2.new(0,32,1,0);back.BackgroundTransparency=1
+    back.Text="←";back.TextColor3=C.Acc;back.TextSize=16
+    back.Font=Enum.Font.GothamBold;back.ZIndex=32
+    local ttl=mkLbl(hd,title,11,Enum.Font.GothamBold,C.Txt,Enum.TextXAlignment.Left)
+    ttl.Size=UDim2.new(1,-42,1,0);ttl.Position=UDim2.new(0,36,0,0);ttl.ZIndex=32
+    local dv=Instance.new("Frame",p)
+    dv.Size=UDim2.new(1,0,0,1);dv.Position=UDim2.new(0,0,0,32)
+    dv.BackgroundColor3=C.Bdr;dv.BorderSizePixel=0;dv.ZIndex=31
+    local sc=Instance.new("ScrollingFrame",p)
+    sc.Size=UDim2.new(1,0,1,-34);sc.Position=UDim2.new(0,0,0,33)
+    sc.BackgroundTransparency=1;sc.BorderSizePixel=0
+    sc.ScrollBarThickness=2;sc.ScrollBarImageColor3=C.BdrL
+    sc.CanvasSize=UDim2.new(0,0,0,0);sc.AutomaticCanvasSize=Enum.AutomaticSize.Y;sc.ZIndex=31
+    local lay=Instance.new("UIListLayout",sc);lay.Padding=UDim.new(0,5)
+    local pd=Instance.new("UIPadding",sc)
+    pd.PaddingTop=UDim.new(0,8);pd.PaddingBottom=UDim.new(0,8)
+    pd.PaddingLeft=UDim.new(0,8);pd.PaddingRight=UDim.new(0,8)
+    local function open2()
+        p.Position=UDim2.new(1,0,0,0);p.Size=UDim2.new(1,0,1,0);p.Visible=true
+        TweenService:Create(p,TweenInfo.new(.25,Enum.EasingStyle.Back,Enum.EasingDirection.Out),
+            {Position=UDim2.new(0,0,0,0)}):Play()
+    end
+    local function close2()
+        TweenService:Create(p,TweenInfo.new(.2,Enum.EasingStyle.Quint,Enum.EasingDirection.In),
+            {Position=UDim2.new(1,0,0,0),Size=UDim2.new(0,0,1,0)}):Play()
+        task.delay(.22,function()
+            p.Visible=false;p.Position=UDim2.new(0,0,0,0);p.Size=UDim2.new(1,0,1,0)
         end)
     end
+    back.MouseButton1Click:Connect(close2)
+    return sc,open2,close2
+end
+
+local function comingSoon(pg)
+    local f=Instance.new("Frame",pg)
+    f.Size=UDim2.new(1,0,0,60);f.BackgroundTransparency=1
+    f.BorderSizePixel=0;f.ZIndex=13;f.LayoutOrder=1
+    local l=mkLbl(f,"coming soon",12,Enum.Font.Gotham,C.TxtD)
+    l.Size=UDim2.new(1,0,1,0);l.ZIndex=14
+end
+
+-- ══ MOV ══════════════════════════════════════════════════════════
+local MOV=tabPages.MOV
+secLabel(MOV,"movement",1)
+
+mkToggle(MOV,"Magic Flight","ПРОБЕЛ вверх  |  SHIFT вниз",false,function(v)
+    if v then _G._xcFlight_start() else _G._xcFlight_stop() end
+end,2)
+
+mkToggle(MOV,"Magic Resolver","авто-уклон от NPC и игроков",false,function(v)
+    resolverOn=v
+    if not v then resActive=false;resVel=0 end
+    if v then notify("Magic Resolver","Активирован",C.AccRes)
+    else notify("Magic Resolver","Отключён",C.TxtD) end
+end,3)
+
+mkToggle(MOV,"Damage Fly","получи урон -> летишь",false,function(v)
+    _G._xcDF_set(v)
+end,4)
+
+local SpSC,openSp=mkSubPanel("SPEED  /  настройки")
+secLabel(SpSC,"режим",1)
+
+local spModes={
+    {k="collision",l="Collision",d="буст от столкновения с игроком"},
+    {k="minijump",l="MiniJump",d="серия мини-прыжков (x3 быстрее)"},
+    {k="selfpush",l="Self Push",d="Пощечина -> рагдол + буст"},
+}
+local spRadios={}
+for _,m in ipairs(spModes) do
+    local r=Instance.new("TextButton",SpSC)
+    r.Size=UDim2.new(1,0,0,38);r.BackgroundColor3=C.BG3
+    r.BorderSizePixel=0;r.Text="";r.AutoButtonColor=false
+    r.ZIndex=32;r.LayoutOrder=#SpSC:GetChildren();cr(6,r)
+    local cir=Instance.new("Frame",r);cir.Size=UDim2.new(0,14,0,14)
+    cir.Position=UDim2.new(0,10,0.5,-7);cir.BackgroundColor3=C.Bdr
+    cir.BorderSizePixel=0;cir.ZIndex=33;cr(7,cir)
+    local dot=Instance.new("Frame",cir);dot.Size=UDim2.new(0,6,0,6)
+    dot.AnchorPoint=Vector2.new(.5,.5);dot.Position=UDim2.new(.5,0,.5,0)
+    dot.BackgroundColor3=C.Acc;dot.BorderSizePixel=0;dot.ZIndex=34;cr(3,dot)
+    dot.Visible=(m.k==speedMode)
+    local tl=mkLbl(r,m.l,11,Enum.Font.Gotham,C.Txt,Enum.TextXAlignment.Left)
+    tl.Size=UDim2.new(1,-32,0,18);tl.Position=UDim2.new(0,30,0,5);tl.ZIndex=33
+    local dl=mkLbl(r,m.d,9,Enum.Font.Gotham,C.TxtD,Enum.TextXAlignment.Left)
+    dl.Size=UDim2.new(1,-32,0,14);dl.Position=UDim2.new(0,30,0,22);dl.ZIndex=33
+    spRadios[m.k]={dot=dot}
+    r.MouseButton1Click:Connect(function()
+        for k,rd in pairs(spRadios) do rd.dot.Visible=(k==m.k) end
+        speedMode=m.k;notify("Speed","Режим: "..m.l,C.Acc)
+    end)
+    r.MouseEnter:Connect(function() tw(r,.08,{BackgroundColor3=C.BG2}) end)
+    r.MouseLeave:Connect(function() tw(r,.08,{BackgroundColor3=C.BG3}) end)
+end
+
+secLabel(SpSC,"collision",#SpSC:GetChildren()+1)
+mkSlider(SpSC,"Радиус триггера",3,20,spCfg.collision.radius,"%d st",function(v) spCfg.collision.radius=v end)
+mkSlider(SpSC,"Скорость буста",10,80,spCfg.collision.speed,"%d st/s",function(v) spCfg.collision.speed=v end)
+secLabel(SpSC,"minijump",#SpSC:GetChildren()+1)
+mkSlider(SpSC,"Сила прыжка",4,40,spCfg.minijump.power,"%d",function(v) spCfg.minijump.power=v end)
+mkSlider(SpSC,"Интервал",5,50,math.floor(spCfg.minijump.rate*100),"%.2fs",function(v) spCfg.minijump.rate=v/100 end)
+secLabel(SpSC,"self push",#SpSC:GetChildren()+1)
+mkSlider(SpSC,"Скорость толчка",10,150,spCfg.selfpush.speed,"%d st/s",function(v) spCfg.selfpush.speed=v end)
+
+local function spBtn(col,txt,cb2)
+    local b=Instance.new("TextButton",SpSC)
+    b.Size=UDim2.new(1,0,0,36);b.BackgroundColor3=col
+    b.BorderSizePixel=0;b.Text=txt;b.TextColor3=C.Wht
+    b.TextSize=12;b.Font=Enum.Font.GothamBold
+    b.AutoButtonColor=false;b.ZIndex=32;b.LayoutOrder=#SpSC:GetChildren();cr(6,b)
+    b.MouseButton1Click:Connect(cb2);return b
+end
+spBtn(C.Acc,"  ЗАПУСТИТЬ",function() _G._xcSpeed_run(speedMode) end)
+spBtn(C.BG3,"  СТОП",function() _G._xcSpeed_stop();notify("Speed","Остановлен",C.TxtD) end)
+
+mkToggleGear(MOV,"Speed","удержи / нажми для настроек",5,function(v)
+    if not v then _G._xcSpeed_stop();notify("Speed","Остановлен",C.TxtD) end
+end,openSp)
+
+-- ══ COM ══════════════════════════════════════════════════════════
+local COM=tabPages.COM
+secLabel(COM,"combat",1)
+
+local DgSC,openDg=mkSubPanel("DODGE  /  настройки")
+
+local DgInfo=Instance.new("TextLabel",DgSC)
+DgInfo.Size=UDim2.new(1,0,0,46);DgInfo.BackgroundColor3=C.BG3
+DgInfo.BorderSizePixel=0;DgInfo.ZIndex=32;DgInfo.LayoutOrder=1
+DgInfo.BackgroundTransparency=0;cr(6,DgInfo)
+DgInfo.Text="Предсказывает будущую позицию врага и уворачивается в безопасном направлении"
+DgInfo.TextColor3=C.TxtD;DgInfo.TextSize=9;DgInfo.Font=Enum.Font.Gotham;DgInfo.TextWrapped=true
+
+secLabel(DgSC,"параметры",2)
+mkSlider(DgSC,"Радиус детекта",3,30,dodgeCfg.Radius,"%d st",function(v) dodgeCfg.Radius=v end)
+mkSlider(DgSC,"Предсказание (x0.01s)",5,80,math.floor(dodgeCfg.PredictTime*100),"%.2fs",function(v) dodgeCfg.PredictTime=v/100 end)
+mkSlider(DgSC,"Базовая сила",5,50,dodgeCfg.BaseForce,"%d",function(v) dodgeCfg.BaseForce=v end)
+mkSlider(DgSC,"Множитель скорости врага",5,100,math.floor(dodgeCfg.SpeedMultiplier*100),"%d%%",function(v) dodgeCfg.SpeedMultiplier=v/100 end)
+mkSlider(DgSC,"Кулдаун (x0.01s)",10,100,math.floor(dodgeCfg.Cooldown*100),"%.2fs",function(v) dodgeCfg.Cooldown=v/100 end)
+
+mkToggleGear(COM,"SmartDodge","предсказывает движение врага",2,function(v)
+    dodgeCfg.Enabled=v
+    if v then notify("SmartDodge","Активирован  —  радиус: "..dodgeCfg.Radius,C.AccCom)
+    else notify("SmartDodge","Отключён",C.TxtD) end
+end,openDg)
+
+-- ══ VISUAL / GUI ═════════════════════════════════════════════════
+comingSoon(tabPages.VISUAL)
+
+local GUI=tabPages.GUI
+secLabel(GUI,"стиль интерфейса",1)
+local styleCards={}
+local function mkStyleCard(key,title,desc,acc,ord)
+    local card=Instance.new("TextButton",GUI)
+    card.Size=UDim2.new(1,0,0,56);card.BackgroundColor3=C.BG3
+    card.BorderSizePixel=0;card.Text="";card.AutoButtonColor=false
+    card.ZIndex=13;card.LayoutOrder=ord;cr(8,card)
+    local cs=st(C.Bdr,1,card)
+    local prev=Instance.new("Frame",card)
+    prev.Size=UDim2.new(0,4,0.65,0);prev.Position=UDim2.new(0,0,0.175,0)
+    prev.BackgroundColor3=acc;prev.BorderSizePixel=0;prev.ZIndex=14;cr(2,prev)
+    local tl=mkLbl(card,title,13,Enum.Font.GothamBold,C.Txt,Enum.TextXAlignment.Left)
+    tl.Size=UDim2.new(1,-16,0,22);tl.Position=UDim2.new(0,14,0,10);tl.ZIndex=14
+    local dl=mkLbl(card,desc,10,Enum.Font.Gotham,C.TxtD,Enum.TextXAlignment.Left)
+    dl.Size=UDim2.new(1,-16,0,14);dl.Position=UDim2.new(0,14,0,32);dl.ZIndex=14
+    local chk=mkLbl(card,"v",14,Enum.Font.GothamBold,acc)
+    chk.Size=UDim2.new(0,20,0,20);chk.Position=UDim2.new(1,-28,0.5,-10);chk.ZIndex=14;chk.Visible=false
+    styleCards[key]={card=card,stroke=cs,title=tl,chk=chk,acc=acc}
+    card.MouseEnter:Connect(function() if guiStyle~=key then tw(card,.1,{BackgroundColor3=C.BG2}) end end)
+    card.MouseLeave:Connect(function() if guiStyle~=key then tw(card,.1,{BackgroundColor3=C.BG3}) end end)
+    return card
+end
+local CsCard=mkStyleCard("cs","CS Style","тёмный  угловатый",C.Acc,2)
+local PanelCard=mkStyleCard("panel","Panel Style","мягкий  скруглённый",C.AccGui,3)
+local function refreshStyles()
+    for k,d in pairs(styleCards) do
+        local on=(k==guiStyle)
+        tw(d.stroke,.15,{Color=on and d.acc or C.Bdr})
+        tw(d.card,.15,{BackgroundColor3=on and C.BG4 or C.BG3})
+        d.title.TextColor3=on and d.acc or C.Txt;d.chk.Visible=on
+    end
+end
+refreshStyles()
+CsCard.MouseButton1Click:Connect(function()
+    if guiStyle=="cs" then return end;guiStyle="cs";refreshStyles()
+    MainCr.CornerRadius=UDim.new(0,10);MainFrame.BackgroundColor3=C.BG
+    notify("GUI Style","Стиль: CS",C.Acc)
+end)
+PanelCard.MouseButton1Click:Connect(function()
+    if guiStyle=="panel" then return end;guiStyle="panel";refreshStyles()
+    MainCr.CornerRadius=UDim.new(0,18);MainFrame.BackgroundColor3=Color3.fromRGB(20,18,28)
+    notify("GUI Style","Стиль: Panel",C.AccGui)
 end)
 
--- ============================================
--- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА COM
--- ============================================
+-- ══ DRAG + ОТКРЫТИЕ ══════════════════════════════════════════════
+local function makeDrag(f)
+    local ds,sp2,dr
+    f.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then
+            dr=true;ds=i.Position;sp2=f.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if not dr then return end
+        if i.UserInputType==Enum.UserInputType.MouseMovement
+        or i.UserInputType==Enum.UserInputType.Touch then
+            local d=i.Position-ds
+            f.Position=UDim2.new(sp2.X.Scale,sp2.X.Offset+d.X,sp2.Y.Scale,sp2.Y.Offset+d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then dr=false end
+    end)
+end
+makeDrag(MainFrame)
 
-resolverBtn.MouseButton1Click:Connect(function()
-    _G.MagicResolverEnabled = not _G.MagicResolverEnabled
-    
-    if _G.MagicResolverEnabled then
-        resolverBtn.Text = "✨ RESOLVER: ВКЛ"
-        resolverBtn.BackgroundColor3 = Color3.fromRGB(150, 100, 200)
-        createNotification("RESOLVER", "RESOLVER АКТИВИРОВАН", "Magic Resolver включен. Автоматический поиск врагов в радиусе " .. _G.ResolverTargetDistance .. " стадов", 3)
+local POS_OPEN=UDim2.new(.5,-WIN_W/2,.5,-WIN_H/2)
+local POS_CLOSE=UDim2.new(.5,-WIN_W/2,-1,0)
+local TW_O=TweenInfo.new(.45,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+local TW_C=TweenInfo.new(.28,Enum.EasingStyle.Quint,Enum.EasingDirection.In)
+
+IconBtn.MouseButton1Click:Connect(function()
+    menuOpen=not menuOpen
+    if menuOpen then
+        TweenService:Create(MainFrame,TW_O,{Position=POS_OPEN,GroupTransparency=0}):Play()
     else
-        resolverBtn.Text = "✨ RESOLVER: ВЫКЛ"
-        resolverBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 150)
-        createNotification("RESOLVER", "RESOLVER ДЕАКТИВИРОВАН", "Magic Resolver отключен", 2)
-        currentTarget = nil
+        TweenService:Create(MainFrame,TW_C,{Position=POS_CLOSE,GroupTransparency=1}):Play()
     end
 end)
-
--- ============================================
--- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА VISUAL
--- ============================================
-
-local particlesEnabled = true
-local trailEnabled = true
-
-particlesBtn.MouseButton1Click:Connect(function()
-    particlesEnabled = not particlesEnabled
-    
-    if particlesEnabled then
-        particlesBtn.Text = "✓ Частицы: ВКЛ"
-        particlesBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
-        createNotification("VISUAL", "ЧАСТИЦЫ ВКЛЮЧЕНЫ", "Визуальные эффекты частиц активированы", 2)
-    else
-        particlesBtn.Text = "○ Частицы: ВЫКЛ"
-        particlesBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
-        createNotification("VISUAL", "ЧАСТИЦЫ ОТКЛЮЧЕНЫ", "Визуальные эффекты частиц деактивированы", 2)
-    end
-end)
-
-trailBtn.MouseButton1Click:Connect(function()
-    trailEnabled = not trailEnabled
-    
-    if trailEnabled then
-        trailBtn.Text = "✓ След: ВКЛ"
-        trailBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100)
-        createNotification("VISUAL", "СЛЕД ВКЛЮЧЕН", "Визуальный след полета активирован", 2)
-    else
-        trailBtn.Text = "○ След: ВЫКЛ"
-        trailBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 50)
-        createNotification("VISUAL", "СЛЕД ОТКЛЮЧЕН", "Визуальный след полета деактивирован", 2)
-    end
-end)
-
--- ============================================
--- ОБРАБОТЧИКИ СОБЫТИЙ - ВКЛАДКА GUI
--- ============================================
-
-csStyleBtn.MouseButton1Click:Connect(function()
-    _G.GUIStyle = "CS"
-    
-    csStyleBtn.Text = "✓ CS:GO Стиль"
-    csStyleBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
-    csStyleBtn.TextColor3 = Color3.fromRGB(15, 15, 15)
-    
-    panelStyleBtn.Text = "○ Panel Стиль"
-    panelStyleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    panelStyleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-    
-    createNotification("GUI", "СТИЛЬ ИЗМЕНЕН", "Интерфейс переключен на CS:GO стиль", 2)
-end)
-
-panelStyleBtn.MouseButton1Click:Connect(function()
-    _G.GUIStyle = "PANEL"
-    
-    panelStyleBtn.Text = "✓ Panel Стиль"
-    panelStyleBtn.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
-    panelStyleBtn.TextColor3 = Color3.fromRGB(15, 15, 15)
-    
-    csStyleBtn.Text = "○ CS:GO Стиль"
-    csStyleBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    csStyleBtn.TextColor3 = Color3.fromRGB(150, 150, 150)
-    
-    createNotification("GUI", "СТИЛЬ ИЗМЕНЕН", "Интерфейс переключен на Panel стиль", 2)
-end)
-
--- ============================================
--- ОБРАБОТЧИКИ СОБЫТИЙ - СМЕРТЬ ПЕРСОНАЖА
--- ============================================
-
-humanoid.Died:Connect(function()
-    stopFlying()
-    createNotification("ERROR", "ПЕРСОНАЖ ПОГИБ", "Система полета отключена", 2)
-    task.wait(1)
-    screenGui:Destroy()
-end)
-
--- ============================================
--- ИНИЦИАЛИЗАЦИЯ
--- ============================================
-
-showLoadingScreen()
-
-task.wait(2.5)
-
-createNotification("SYSTEM", "XCLIENT ЗАГРУЖЕНА", "Система магического полета готова к использованию", 4)
-createNotification("INFO", "УПРАВЛЕНИЕ", "Нажми на логотип X для открытия меню", 3)
-
--- Инициализируем первую вкладку
 switchTab("MOV")
 
-print("✅ XClient Magic Flight System загружена!")
-print("📱 Нажми на логотип X слева сверху для открытия меню")
-print("⚡ Скорость полета: " .. _G.FlightSpeed .. " studs/sec")
-print("✨ Magic Resolver: " .. (_G.MagicResolverEnabled and "ВКЛ" or "ВЫКЛ"))
-print("🎨 Стиль интерфейса: " .. _G.GUIStyle)
+-- ══ DAMAGE FLY HUD ═══════════════════════════════════════════════
+local HUD_SZ=74;local RING_W=5
+local DfHud=Instance.new("Frame",SG)
+DfHud.Size=UDim2.new(0,HUD_SZ+20,0,HUD_SZ+30)
+DfHud.AnchorPoint=Vector2.new(.5,1)
+DfHud.Position=UDim2.new(.5,0,1,-20)
+DfHud.BackgroundTransparency=1;DfHud.BorderSizePixel=0;DfHud.ZIndex=40;DfHud.Visible=false
+
+local DfTrack=Instance.new("Frame",DfHud)
+DfTrack.Size=UDim2.new(0,HUD_SZ,0,HUD_SZ);DfTrack.AnchorPoint=Vector2.new(.5,.5)
+DfPct.Position=UDim2.new(.5,0,0,HUD_SZ/2+2);DfPct.ZIndex=44
+
+local DfLbl=mkLbl(DfHud,"DAMAGE FLY",8,Enum.Font.GothamBold,C.TxtD)
+DfLbl.Size=UDim2.new(1,0,0,14);DfLbl.Position=UDim2.new(0,0,1,-12);DfLbl.ZIndex=44
+
+local function dfCol(p)
+    if p>60 then return Color3.fromRGB(math.floor(255*(1-(p-60)/40)),220,80)
+    elseif p>30 then return Color3.fromRGB(255,math.floor(220*((p-30)/30)),30)
+    else return Color3.fromRGB(255,math.floor(80*(p/30)),30) end
+end
+local function updateDfHud(p)
+    p=math.clamp(p,0,100);local col=dfCol(p)
+    local vis=math.floor(SEG_N*p/100+.5)
+    for i=1,SEG_N do dfSegs[i].BackgroundColor3=col;dfSegs[i].BackgroundTransparency=(i<=vis)and 0 or 0.88 end
+    DfPct.Text=tostring(math.floor(p));DfPct.TextColor3=col
+end
+-- ══ RESOLVER ═════════════════════════════════════════════════════
+local function magicResolver(dt)
+    if not resolverOn then resActive=false;resVel=0;return {v=0,m=1} end
+    local mp=Root.Position;local found=false;local cl=math.huge
+    for _,pl in ipairs(Players:GetPlayers()) do
+        if pl==LP then continue end
+        local ch=pl.Character;if not ch then continue end
+        local r=ch:FindFirstChild("HumanoidRootPart");if not r then continue end
+        local d=(r.Position-mp).Magnitude;if d<cl then cl=d end
+        if d<=C.RDet then found=true;break end
+    end
+    if not found then
+        for _,obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Humanoid") and obj.Parent~=Char then
+                local isPl=false
+                for _,pl in ipairs(Players:GetPlayers()) do
+                    if pl.Character==obj.Parent then isPl=true;break end
+                end
+                if isPl then continue end
+                local nr=obj.Parent:FindFirstChild("HumanoidRootPart")
+                    or obj.Parent:FindFirstChildWhichIsA("BasePart")
+                if not nr then continue end
+                local d=(nr.Position-mp).Magnitude;if d<cl then cl=d end
+                if d<=C.RDet then found=true;break end
+            end
+        end
+    end
+    if found then resActive=true
+    elseif resActive and cl>C.RSafe then resActive=false end
+    local tv=resActive and C.RRise or -C.RSink
+    resVel=resVel+(tv-resVel)*C.RLerp
+    resVel=math.clamp(resVel,-C.RSink,C.RRise)
+    return {v=resVel*dt,m=resActive and C.RBoost or 1}
+end
+
+-- ══ MAGIC FLIGHT ══════════════════════════════════════════════════
+local function stopFlight()
+    if not flying then return end;flying=false
+    if flyConn then flyConn:Disconnect();flyConn=nil end
+    Root.AssemblyLinearVelocity=Vector3.zero
+    Hum.PlatformStand=false;Hum.WalkSpeed=16
+    wT=0;sT=0;dC=0;dTgt=0;dTmr=0;resActive=false;resVel=0
+    notify("Magic Flight","Отключён",C.TxtD)
+end
+_G._xcFlight_stop=stopFlight
+
+local function startFlight()
+    if flying then return end;flying=true;Hum.PlatformStand=true
+    notify("Magic Flight","Активирован",C.Acc)
+    local tCF=Root.CFrame
+    flyConn=RunService.Heartbeat:Connect(function(dt)
+        if Hum.Health<=0 then stopFlight();return end
+        local md=Hum.MoveDirection
+        local cF=Camera.CFrame
+        local cFwd=Vector3.new(cF.LookVector.X,0,cF.LookVector.Z)
+        local cR=Vector3.new(cF.RightVector.X,0,cF.RightVector.Z)
+        if cFwd.Magnitude>.001 then cFwd=cFwd.Unit end
+        if cR.Magnitude>.001 then cR=cR.Unit end
+        local dir=Vector3.zero
+        if md.Magnitude>.05 then
+            local cv=cFwd*(-md.Z)+cR*md.X
+            if cv.Magnitude>.001 then dir=cv.Unit end
+        end
+        local vi=0
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vi=1
+        elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+            or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then vi=-1 end
+        local res=magicResolver(dt)
+        local spd=C.FlySpeed*res.m
+        local vel=Vector3.new(dir.X*spd,vi*C.VertSpeed,dir.Z*spd)
+        wT=wT+dt*C.WF;local sinW=math.sin(wT)*C.WA
+        dTmr=dTmr-dt
+        if dTmr<=0 then
+            dTgt=(math.random()*2-1)*C.DA
+            dIvl=C.DMin+math.random()*(C.DMax-C.DMin);dTmr=dIvl
+        end
+        dC=dC+(dTgt-dC)*C.DL
+        sT=sT+dt*C.SF
+        local sRaw=math.abs(math.sin(sT))
+        local sWave=(sRaw^C.SP)*C.SA
+        local sSgn=(math.floor(sT/math.pi)%2==0)and 1 or -1
+        local wobble=sinW+dC+sWave*sSgn
+        local cur=Root.Position
+        local nPos=cur+(vel+Vector3.new(0,wobble,0))*dt+Vector3.new(0,res.v,0)
+        local nRot
+        if dir.Magnitude>.05 then nRot=CFrame.lookAt(nPos,nPos+dir)
+        else nRot=CFrame.new(nPos)*CFrame.Angles(0,math.atan2(-cFwd.X,-cFwd.Z),0) end
+        tCF=nRot;Root.CFrame=Root.CFrame:Lerp(tCF,C.LerpA)
+        Root.AssemblyLinearVelocity=Vector3.zero
+    end)
+end
+_G._xcFlight_start=startFlight
+
+-- ══ DAMAGE FLY ЛОГИКА ════════════════════════════════════════════
+local function stopDF()
+    dfActive=false
+    if dfConn then dfConn:Disconnect();dfConn=nil end
+    if not flying then Hum.PlatformStand=false;Hum.WalkSpeed=16
+        Root.AssemblyLinearVelocity=Vector3.zero end
+end
+
+local function startDF()
+    if dfActive then return end
+    if dfCharge<=0 then notify("Damage Fly","Заряд кончился! Постой на месте",Color3.fromRGB(255,80,60));return end
+    dfActive=true;DfHud.Visible=true
+    dfConn=RunService.Heartbeat:Connect(function(dt)
+        local ch=LP.Character;local rt=ch and ch:FindFirstChild("HumanoidRootPart")
+        local hm=ch and ch:FindFirstChild("Humanoid")
+        if not rt or not hm then stopDF();return end
+        if hm.Health<=0 then stopDF();return end
+        if dfActive then
+            dfCharge=math.max(0,dfCharge-C.DFDrain*dt);updateDfHud(dfCharge)
+            if dfCharge<=0 then
+                dfActive=false;stopDF()
+                notify("Damage Fly","Заряд кончился! Постой на месте",Color3.fromRGB(255,80,60));return
+            end
+            hm.PlatformStand=true
+            local md2=hm.MoveDirection
+            local cF2=Camera.CFrame
+            local cFwd2=Vector3.new(cF2.LookVector.X,0,cF2.LookVector.Z)
+            local cR2=Vector3.new(cF2.RightVector.X,0,cF2.RightVector.Z)
+            if cFwd2.Magnitude>.001 then cFwd2=cFwd2.Unit end
+            if cR2.Magnitude>.001 then cR2=cR2.Unit end
+            local dir2=Vector3.zero
+            if md2.Magnitude>.05 then
+                local cv=cFwd2*(-md2.Z)+cR2*md2.X
+                if cv.Magnitude>.001 then dir2=cv.Unit end
+            end
+            local vi2=0
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then vi2=1
+            elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+                or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then vi2=-1 end
+            local vel2=Vector3.new(dir2.X*C.FlySpeed,vi2*C.VertSpeed,dir2.Z*C.FlySpeed)
+            local nPos2=rt.Position+vel2*dt
+            local nRot2
+            if dir2.Magnitude>.05 then nRot2=CFrame.lookAt(nPos2,nPos2+dir2)
+            else nRot2=CFrame.new(nPos2)*CFrame.Angles(0,math.atan2(-cFwd2.X,-cFwd2.Z),0) end
+            rt.CFrame=rt.CFrame:Lerp(nRot2,C.LerpA)
+            rt.AssemblyLinearVelocity=Vector3.zero
+        else
+            hm.PlatformStand=false
+            if hm.MoveDirection.Magnitude<0.05 then
+                dfCharge=math.min(100,dfCharge+C.DFRegen*dt);updateDfHud(dfCharge)
+                if dfCharge>=100 then
+                    notify("Damage Fly","Заряд восстановлен!",Color3.fromRGB(100,220,100))
+                    if dfConn then dfConn:Disconnect();dfConn=nil end
+                end
+            end
+        end
+    end)
+end
+
+local function connectDmg()
+    if dfDmgConn then dfDmgConn:Disconnect() end
+    local prevHp=Hum.Health
+    dfDmgConn=Hum.HealthChanged:Connect(function(hp)
+        if not dfOn then return end
+        if hp<prevHp then startDF() end
+        prevHp=hp
+    end)
+end
+
+local function setDF(v)
+    dfOn=v
+    if v then DfHud.Visible=true;updateDfHud(dfCharge);connectDmg()
+        notify("Damage Fly","Активирован — получи урон",Color3.fromRGB(255,140,50))
+    else stopDF()
+        if dfDmgConn then dfDmgConn:Disconnect();dfDmgConn=nil end
+        DfHud.Visible=false;notify("Damage Fly","Отключён",C.TxtD)
+    end
+end
+_G._xcDF_set=setDF
+-- ══ SPEED ════════════════════════════════════════════════════════
+local function findTool(n)
+    local ch=LP.Character;local bp=LP:FindFirstChild("Backpack")
+    if ch then for _,v in ipairs(ch:GetChildren()) do
+        if v:IsA("Tool") and v.Name:lower():find(n:lower()) then return v,true end
+    end end
+    if bp then for _,v in ipairs(bp:GetChildren()) do
+        if v:IsA("Tool") and v.Name:lower():find(n:lower()) then return v,false end
+    end end
+    return nil,false
+end
+local function stopSpd()
+    if speedConn then speedConn:Disconnect();speedConn=nil end
+    if jumpConn then jumpConn:Disconnect();jumpConn=nil end
+    local hm=LP.Character and LP.Character:FindFirstChild("Humanoid")
+    if hm then hm.WalkSpeed=16 end
+end
+_G._xcSpeed_stop=stopSpd
+local function runSpd(mode)
+    stopSpd()
+    if mode=="collision" then
+        speedConn=RunService.Heartbeat:Connect(function()
+            local ch=LP.Character;local rt=ch and ch:FindFirstChild("HumanoidRootPart");if not rt then return end
+            for _,pl in ipairs(Players:GetPlayers()) do
+                if pl==LP then continue end
+                local c2=pl.Character;if not c2 then continue end
+                local r2=c2:FindFirstChild("HumanoidRootPart");if not r2 then continue end
+                local diff=rt.Position-r2.Position
+                if diff.Magnitude<spCfg.collision.radius then
+                    local d=diff.Magnitude>.01 and diff.Unit or Vector3.new(0,0,1)
+                    rt.AssemblyLinearVelocity=d*spCfg.collision.speed+Vector3.new(0,6,0)
+                end
+            end
+        end)
+        notify("Speed","Collision активирован",C.Acc)
+    elseif mode=="minijump" then
+        local hm=LP.Character and LP.Character:FindFirstChild("Humanoid");if not hm then return end
+        hm.JumpPower=spCfg.minijump.power
+        local t2=0
+        jumpConn=RunService.Heartbeat:Connect(function(dt)
+            local h2=LP.Character and LP.Character:FindFirstChild("Humanoid");if not h2 then stopSpd();return end
+            t2=t2+dt;if t2>=spCfg.minijump.rate then t2=0;h2.JumpPower=spCfg.minijump.power;h2.Jump=true end
+        end)
+        notify("Speed","MiniJump активирован",C.Acc)
+    elseif mode=="selfpush" then
+        local tool,eq=findTool("пощечина")
+        if not tool then tool,eq=findTool("slap") end
+        if not tool then notify("Self Push","Пощечина не найдена!",Color3.fromRGB(255,80,80));return end
+        local hm=LP.Character and LP.Character:FindFirstChild("Humanoid");if not hm then return end
+        if not eq then hm:EquipTool(tool);task.wait(.08) end
+        pcall(function() tool:Activate() end)
+        task.delay(.1,function()
+            local rt=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart");if not rt then return end
+            local d=rt.CFrame.LookVector
+            rt.AssemblyLinearVelocity=Vector3.new(d.X*spCfg.selfpush.speed,14,d.Z*spCfg.selfpush.speed)
+        end)
+        notify("Speed","Self Push!",C.Acc)
+    end
+end
+_G._xcSpeed_run=runSpd
+
+-- ══ SMARTDODGE ═══════════════════════════════════════════════════
+local function getClosestThreat(hrp)
+    local closest,vel,predicted;local bestDist=dodgeCfg.Radius
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p~=LP and p.Character then
+            local root=p.Character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local v=root.AssemblyLinearVelocity
+                local future=root.Position+(v*dodgeCfg.PredictTime)
+                local dist=(future-hrp.Position).Magnitude
+                if dist<bestDist then
+                    bestDist=dist;closest=root;vel=v;predicted=future
+                end
+            end
+        end
+    end
+    return closest,vel,predicted
+end
+
+local function smartDodge(hrp,hum2)
+    if not dodgeCfg.Enabled then return end
+    if tick()-lastDodge<dodgeCfg.Cooldown then return end
+    local enemy,vel,predicted=getClosestThreat(hrp)
+    if not(enemy and predicted) then return end
+    local away=hrp.Position-predicted
+    if away.Magnitude==0 then return end
+    away=away.Unit
+    local moveDir=hum2.MoveDirection
+    local finalDir=away*0.8+moveDir*0.3
+    if finalDir.Magnitude>.001 then finalDir=finalDir.Unit else finalDir=away end
+    local enemySpeed=vel.Magnitude
+    local force=dodgeCfg.BaseForce+(enemySpeed*dodgeCfg.SpeedMultiplier)
+    hrp.AssemblyLinearVelocity=Vector3.new(
+        finalDir.X*force,
+        hrp.AssemblyLinearVelocity.Y,
+        finalDir.Z*force
+    )
+    lastDodge=tick()
+end
+
+RunService.Heartbeat:Connect(function()
+    if not dodgeCfg.Enabled then return end
+    local ch=LP.Character;if not ch then return end
+    local hrp=ch:FindFirstChild("HumanoidRootPart")
+    local hm=ch:FindFirstChild("Humanoid")
+    if not hrp or not hm or hm.Health<=0 then return end
+    smartDodge(hrp,hm)
+end)
+
+-- ══ СМЕРТЬ / ВОЗРОЖДЕНИЕ ═════════════════════════════════════════
+local function onDied()
+    stopFlight();stopDF();stopSpd()
+    if menuOpen then
+        menuOpen=false
+        TweenService:Create(MainFrame,TW_C,{Position=POS_CLOSE,GroupTransparency=1}):Play()
+    end
+end
+Hum.Died:Connect(onDied)
+LP.CharacterAdded:Connect(function(newChar)
+    stopFlight();stopDF();stopSpd()
+    if dfDmgConn then dfDmgConn:Disconnect();dfDmgConn=nil end
+    Char=newChar
+    Hum=newChar:WaitForChild("Humanoid")
+    Root=newChar:WaitForChild("HumanoidRootPart")
+    if dfOn then connectDmg() end
+    Hum.Died:Connect(onDied)
+end)
+
+-- ══ СТАРТ ════════════════════════════════════════════════════════
+task.delay(2.4,function()
+    notify("xclient","Скрипт загружен  v5.0",C.Acc)
+end)
+print("[xclient v5.0] OK | Delta/Xeno/Fluxus/Codex ready")
