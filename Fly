@@ -1,11 +1,11 @@
 --[[
-    ════════════════════════════════════════════════════════════════════════════════
+    ═════════════════════════════════════════════════════════════════════════════════════
     СИСТЕМА МАГИЧЕСКОГО ПОЛЕТА ДЛЯ ROBLOX
-    Версия: 1.0.0
+    Версия: 1.1.0 (Оптимизированная версия)
     Автор: Магический полет
     Описание: Продвинутая система полета с поддержкой мобильных устройств,
               реалистичной физикой и красивым интерфейсом
-    ════════════════════════════════════════════════════════════════════════════════
+    ═════════════════════════════════════════════════════════════════════════════════════
 --]]
 
 local Players = game:GetService("Players")
@@ -13,19 +13,20 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- КОНСТАНТЫ И КОНФИГУРАЦИЯ
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 local FLIGHT_SPEED = _G.FlightSpeed or 16
 local HOVER_AMPLITUDE = 0.1 -- Амплитуда колебаний при парении (0.05-0.15)
 local TWEEN_DURATION = 0.3 -- Длительность анимации меню
 local MENU_SIZE = UDim2.new(0, 250, 0, 200) -- Размер меню
 local BUTTON_SIZE = UDim2.new(0, 50, 0, 50) -- Размер кнопки управления
+local LERP_SPEED = 0.15 -- Скорость интерполяции для плавности движения
 
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ИНИЦИАЛИЗАЦИЯ
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 local localPlayer = Players.LocalPlayer
 local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
@@ -36,33 +37,38 @@ local isFlying = false
 local menuOpen = false
 local hoverTime = 0
 local spaceKeyPressed = false
+local currentVelocity = Vector3.new(0, 0, 0) -- Хранилище текущей скорости для интерполяции
 
--- ════════════════════════════════════════════════════════════════════════════════
+-- Таблица подключений для очистки
+local connections = {}
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ФУНКЦИИ СОЗДАНИЯ GUI
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 --[[
     Создает главное меню для управления полетом
-    Возвращает: ScreenGui, ToggleButton
+    Возвращает: ScreenGui, ToggleButton, MenuPanel, ToggleIndicator
 ]]
 local function createFlightMenu()
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    
+    -- Проверка на дубликаты и удаление их
+    local existingGui = playerGui:FindFirstChild("FlightMenu")
+    if existingGui then
+        existingGui:Destroy()
+        wait(0.1)
+    end
+
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "FlightMenu"
     screenGui.ResetOnSpawn = false
-    screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+    screenGui.DisplayOrder = 9999
+    screenGui.Parent = playerGui
 
-    -- Проверка на дубликаты
-    if screenGui.Parent:FindFirstChild("FlightMenu") then
-        for _, child in ipairs(screenGui.Parent:FindFirstChild("FlightMenu", true):FindFirstChild("FlightMenu"):GetChildren()) do
-            if child ~= screenGui then
-                child:Destroy()
-            end
-        end
-    end
-
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- ────────────────────────────────────────────────────────────────────────────────
     -- Кнопка открытия меню (иконка телефона)
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- ────────────────────────────────────────────────────────────────────────────────
     
     local openMenuButton = Instance.new("ImageButton")
     openMenuButton.Name = "OpenMenuButton"
@@ -80,9 +86,24 @@ local function createFlightMenu()
     cornerButton.CornerRadius = UDim.new(0, 12)
     cornerButton.Parent = openMenuButton
 
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- Эффект наведения курсора
+    openMenuButton.MouseEnter:Connect(function()
+        local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(openMenuButton, tweenInfo, {BackgroundTransparency = 0})
+        tween:Play()
+    end)
+
+    openMenuButton.MouseLeave:Connect(function()
+        if not menuOpen then
+            local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            local tween = TweenService:Create(openMenuButton, tweenInfo, {BackgroundTransparency = 0.2})
+            tween:Play()
+        end
+    end)
+
+    -- ────────────────────────────────────────────────────────────────────────────────
     -- Панель меню (темная, появляется при клике)
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- ────────────────────────────────────────────────────────────────────────────────
     
     local menuPanel = Instance.new("Frame")
     menuPanel.Name = "MenuPanel"
@@ -104,9 +125,9 @@ local function createFlightMenu()
     shadow.Transparency = 0.3
     shadow.Parent = menuPanel
 
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- ────────────────────────────────────────────────────────────────────────────────
     -- Заголовок меню
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- ────────────────────────────────────────────────────────────────────────────────
     
     local titleLabel = Instance.new("TextLabel")
     titleLabel.Name = "TitleLabel"
@@ -129,9 +150,9 @@ local function createFlightMenu()
     titleLine.BorderSizePixel = 0
     titleLine.Parent = menuPanel
 
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- ────────────────────────────────────────────────────────────────────────────────
     -- Переключатель режима полета
-    -- ─────────────────────────────────────────────────────────────────────────────
+    -- ────────────────────────────────────────────────────────────────────────────────
     
     local toggleContainer = Instance.new("Frame")
     toggleContainer.Name = "ToggleContainer"
@@ -186,6 +207,12 @@ end
     Возвращает: Attachment с частицами
 ]]
 local function createFlightEffect()
+    -- Проверяем, существует ли уже эффект
+    local existingEffect = rootPart:FindFirstChild("FlightEffect")
+    if existingEffect then
+        existingEffect:Destroy()
+    end
+
     local attachment = Instance.new("Attachment")
     attachment.Name = "FlightEffect"
     attachment.Parent = rootPart
@@ -203,47 +230,60 @@ local function createFlightEffect()
     return attachment
 end
 
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ФУНКЦИИ УПРАВЛЕНИЯ ПОЛЕТОМ
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 --[[
     Активирует режим полета
 ]]
 local function activateFlight()
+    if isFlying then return end
     isFlying = true
     
-    -- Отключаем стандартное падение
+    -- Очищаем старые компоненты, если они остались
+    local oldVelocity = rootPart:FindFirstChild("FlightVelocity")
+    if oldVelocity then oldVelocity:Destroy() end
+    
+    local oldGyro = rootPart:FindFirstChild("FlightGyro")
+    if oldGyro then oldGyro:Destroy() end
+
+    -- Создаем компоненты управления полетом
     local bodyVelocity = Instance.new("BodyVelocity")
     bodyVelocity.Name = "FlightVelocity"
     bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bodyVelocity.P = 1250
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
     bodyVelocity.Parent = rootPart
 
-    -- Отключаем стандартную гравитацию
     local bodyGyro = Instance.new("BodyGyro")
     bodyGyro.Name = "FlightGyro"
     bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
     bodyGyro.P = 3000
+    bodyGyro.D = 500
     bodyGyro.Parent = rootPart
 
     -- Создаем визуальный эффект полета
     createFlightEffect()
+
+    -- Обнуляем текущую скорость
+    currentVelocity = Vector3.new(0, 0, 0)
+    hoverTime = 0
 
     -- Основной цикл полета
     local heartbeatConnection
     heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
         if not isFlying or not character.Parent or humanoid.Health <= 0 then
             heartbeatConnection:Disconnect()
-            bodyVelocity:Destroy()
-            bodyGyro:Destroy()
+            if bodyVelocity and bodyVelocity.Parent then bodyVelocity:Destroy() end
+            if bodyGyro and bodyGyro.Parent then bodyGyro:Destroy() end
             isFlying = false
             return
         end
 
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
         -- ПОЛУЧЕНИЕ ВХОДНЫХ ДАННЫХ
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
 
         local moveDirection = humanoid.MoveDirection -- Работает с мобильным джойстиком
         local verticalInput = spaceKeyPressed and 1 or -1 -- Space = вверх, иначе = вниз
@@ -255,47 +295,51 @@ local function activateFlight()
             isSprinting = true
         end
 
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
         -- РЕАЛИСТИЧНАЯ ФИЗИКА ПОЛЕТА
-        -- ────────────���────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
 
         local currentSpeed = FLIGHT_SPEED * (isSprinting and 1.5 or 1)
         
         -- Направление полета в мировых координатах
         local flightDirection = Vector3.new(moveDirection.X, verticalInput * 0.5, moveDirection.Z)
         
-        -- Если нет ввода, применяем гравитацию замедления
-        if flightDirection.Magnitude == 0 then
-            flightDirection = Vector3.new(0, -1, 0) * 0.3
+        -- Если нет ввода, применяем мягкое замедление вместо гравитации
+        if flightDirection.Magnitude < 0.1 then
+            flightDirection = Vector3.new(0, -0.2, 0)
         else
             flightDirection = flightDirection.Unit
         end
 
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
         -- ИМИТАЦИЯ КОЛЕБАНИЙ (ПАРЕНИЕ В ВОЗДУХЕ)
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
 
         hoverTime = hoverTime + deltaTime
         local hoverOffset = math.sin(hoverTime * 2) * HOVER_AMPLITUDE
 
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
         -- ПРИМЕНЯЕМ ДВИЖЕНИЕ
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
 
         local targetVelocity = flightDirection * currentSpeed + Vector3.new(0, hoverOffset, 0)
         
         -- Плавное lerp для реалистичного ускорения
-        bodyVelocity.Velocity = bodyVelocity.Velocity:Lerp(targetVelocity, 0.15)
+        currentVelocity = currentVelocity:Lerp(targetVelocity, LERP_SPEED)
+        
+        bodyVelocity.Velocity = currentVelocity
         
         -- Обнуляем ассамблеи для стабильности
-        rootPart.AssemblyLinearVelocity = bodyVelocity.Velocity
+        rootPart.AssemblyLinearVelocity = currentVelocity
 
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
         -- НАПРАВЛЕНИЕ КАМЕРЫ
-        -- ─────────────────────────────────────────────────────────────────────────
+        -- ───────────────────────────────────────────────────────────────────────────
 
         bodyGyro.CFrame = rootPart.CFrame
     end)
+    
+    table.insert(connections, heartbeatConnection)
 end
 
 --[[
@@ -313,11 +357,13 @@ local function deactivateFlight()
     
     local effect = rootPart:FindFirstChild("FlightEffect")
     if effect then effect:Destroy() end
+    
+    currentVelocity = Vector3.new(0, 0, 0)
 end
 
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ФУНКЦИИ АНИМАЦИИ МЕНЮ
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 --[[
     Открывает меню с анимацией
@@ -339,6 +385,11 @@ local function openMenu(menuPanel, openMenuButton)
 
     local tween = TweenService:Create(menuPanel, tweenInfo, tweenGoal)
     tween:Play()
+    
+    -- Изменяем прозрачность кнопки при открытии
+    local buttonTweenGoal = { BackgroundTransparency = 0 }
+    local buttonTween = TweenService:Create(openMenuButton, tweenInfo, buttonTweenGoal)
+    buttonTween:Play()
 end
 
 --[[
@@ -361,29 +412,27 @@ local function closeMenu(menuPanel, openMenuButton)
 
     local tween = TweenService:Create(menuPanel, tweenInfo, tweenGoal)
     tween:Play()
+    
+    -- Восстанавливаем прозрачность кнопки
+    local buttonTweenGoal = { BackgroundTransparency = 0.2 }
+    local buttonTween = TweenService:Create(openMenuButton, tweenInfo, buttonTweenGoal)
+    buttonTween:Play()
 end
 
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
--- Проверяем, существует ли уже меню
-local playerGui = localPlayer:WaitForChild("PlayerGui")
-if playerGui:FindFirstChild("FlightMenu") then
-    playerGui:FindFirstChild("FlightMenu"):Destroy()
-end
-
--- Создаем интерфейс
 local screenGui, openMenuButton, menuPanel, toggleButton, toggleIndicator = createFlightMenu()
 
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ОБРАБОТЧИКИ СОБЫТИЙ UI
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 --[[
     Обработчик клика по кнопке открытия меню
 ]]
-openMenuButton.MouseButton1Click:Connect(function()
+local openMenuConnection = openMenuButton.MouseButton1Click:Connect(function()
     if menuOpen then
         closeMenu(menuPanel, openMenuButton)
     else
@@ -391,10 +440,12 @@ openMenuButton.MouseButton1Click:Connect(function()
     end
 end)
 
+table.insert(connections, openMenuConnection)
+
 --[[
     Обработчик клика по переключателю полета
 ]]
-toggleButton.MouseButton1Click:Connect(function()
+local toggleConnection = toggleButton.MouseButton1Click:Connect(function()
     if isFlying then
         deactivateFlight()
         
@@ -430,14 +481,16 @@ toggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- ════════════════════════════════════════════════════════════════════════════════
+table.insert(connections, toggleConnection)
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ОБРАБОТЧИКИ ВВОДА КЛАВИАТУРЫ
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 --[[
     Отслеживание нажатия SPACE для подъема
 ]]
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
+local inputBeganConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
     if input.KeyCode == Enum.KeyCode.Space then
@@ -450,38 +503,64 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
+table.insert(connections, inputBeganConnection)
+
 --[[
     Отслеживание отпускания SPACE
 ]]
-UserInputService.InputEnded:Connect(function(input, gameProcessed)
+local inputEndedConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.Space then
         spaceKeyPressed = false
     end
 end)
 
--- ════════════════════════════════════════════════════════════════════════════════
--- ОБРАБОТЧИКА СМЕРТИ ИГРОКА
--- ════════════════════════════════════════════════════════════════════════════════
+table.insert(connections, inputEndedConnection)
 
-humanoid.Died:Connect(function()
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- ОБРАБОТЧИК СМЕРТИ ИГРОКА
+-- ═════════════════════════════════════════════════════════════════════════════════════
+
+local diedConnection = humanoid.Died:Connect(function()
     deactivateFlight()
+    
+    -- Очищаем все подключения
+    for _, connection in ipairs(connections) do
+        if connection and connection.Connected then
+            connection:Disconnect()
+        end
+    end
+    
     screenGui:Destroy()
 end)
 
--- ════════════════════════════════════════════════════════════════════════════════
--- ОБРАБОТЧИК СМЕНЫ ПЕРСОНАЖА
--- ════════════════════════════════════════════════════════════════════════════════
+table.insert(connections, diedConnection)
 
-localPlayer.CharacterAdded:Connect(function(newCharacter)
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- ОБРАБОТЧИК СМЕНЫ ПЕРСОНАЖА
+-- ═════════════════════════════════════════════════════════════════════════════════════
+
+local characterAddedConnection = localPlayer.CharacterAdded:Connect(function(newCharacter)
     deactivateFlight()
+    
+    -- Очищаем все подключения
+    for _, connection in ipairs(connections) do
+        if connection and connection.Connected then
+            connection:Disconnect()
+        end
+    end
+    
     screenGui:Destroy()
     script:Destroy()
 end)
 
--- ════════════════════════════════════════════════════════════════════════════════
+table.insert(connections, characterAddedConnection)
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
 -- ЛОГИРОВАНИЕ (ОТЛАДКА)
--- ════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 print("✓ Система магического полета инициализирована успешно!")
 print(string.format("✓ Скорость полета: %d studs/s", FLIGHT_SPEED))
+print("✓ Режим ускорения: Shift (1.5x скорость)")
+print("✓ Полет вверх: Пробел | Полет вниз: опустить палец со спейса")
 print("✓ Команда для изменения скорости: _G.FlightSpeed = 20; script:Destroy()")
