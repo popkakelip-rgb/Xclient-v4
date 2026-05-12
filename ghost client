@@ -1,0 +1,57 @@
+local g=Instance.new("ScreenGui",game.Players.LocalPlayer.PlayerGui)
+g.ResetOnSpawn=false
+
+local f=Instance.new("Frame",g)
+f.Size=UDim2.new(0.9,0,0.75,0)
+f.Position=UDim2.new(0.05,0,0.12,0)
+f.BackgroundColor3=Color3.fromRGB(12,12,12)
+f.Active=true
+f.Draggable=true
+
+local c=Instance.new("UICorner",f)
+c.CornerRadius=UDim.new(0,18)
+
+local line=Instance.new("Frame",f)
+line.Size=UDim2.new(1,0,0,2)
+line.Position=UDim2.new(0,0,0.07,0)
+line.BackgroundColor3=Color3.fromRGB(170,85,255)
+line.BorderSizePixel=0
+
+local title=Instance.new("TextLabel",f)
+title.Size=UDim2.new(0.4,0,0.07,0)
+title.Position=UDim2.new(0.03,0,0,0)
+title.BackgroundTransparency=1
+title.Text="Ghost Client"
+title.TextColor3=Color3.fromRGB(170,85,255)
+title.Font=Enum.Font.GothamBold
+title.TextScaled=true
+
+local esp=Instance.new("Frame",f)
+esp.Size=UDim2.new(0.94,0,0.12,0)
+esp.Position=UDim2.new(0.03,0,0.11,0)
+esp.BackgroundColor3=Color3.fromRGB(18,18,18)
+
+local ec=Instance.new("UICorner",esp)
+ec.CornerRadius=UDim.new(0,14)
+
+local txt=Instance.new("TextLabel",esp)
+txt.Size=UDim2.new(0.5,0,1,0)
+txt.Position=UDim2.new(0.05,0,0,0)
+txt.BackgroundTransparency=1
+txt.Text="ESP"
+txt.TextColor3=Color3.new(1,1,1)
+txt.Font=Enum.Font.GothamBold
+txt.TextScaled=true
+txt.TextXAlignment=Enum.TextXAlignment.Left
+
+local btn=Instance.new("TextButton",esp)
+btn.Size=UDim2.new(0.18,0,0.55,0)
+btn.Position=UDim2.new(0.77,0,0.22,0)
+btn.Text="ON"
+btn.BackgroundColor3=Color3.fromRGB(170,85,255)
+btn.TextColor3=Color3.new(1,1,1)
+btn.Font=Enum.Font.GothamBold
+btn.TextScaled=true
+
+local bc=Instance.new("UICorner",btn)
+bc.CornerRadius=UDim.new(1,0)
