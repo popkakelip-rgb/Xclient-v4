@@ -1,10 +1,9 @@
 --[[
     ═════════════════════════════════════════════════════════════════════════════════════
-    СИСТЕМА МАГИ��ЕСКОГО ПОЛЕТА ДЛЯ ROBLOX
-    Версия: 1.2.0 (С микропаданиями, микрошагами и рандомизацией)
+    XCLIENT v1.3.0 - ПРОФЕССИОНАЛЬНЫЙ HUB DENGAN CS:GO СТИЛЕМ
+    Система магического полета с реалистичной физикой
+    Версия: 1.3.0
     Автор: Магический полет
-    Описание: Продвинутая система полета с реалистичной физикой, случайными
-              эффектами нестабильности и поддержкой мобильных устройств
     ═════════════════════════════════════════════════════════════════════════════════════
 --]]
 
@@ -15,23 +14,23 @@ local TweenService = game:GetService("TweenService")
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
 -- КОНСТАНТЫ И КОНФИГУРАЦИЯ
--- ══════════════════════��══════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════════════════════════
 
 local FLIGHT_SPEED = _G.FlightSpeed or 16
-local HOVER_AMPLITUDE = 0.1 -- Амплитуда синусоидального колебания (0.05-0.15)
-local TWEEN_DURATION = 0.3 -- Длительность анимации меню
-local MENU_SIZE = UDim2.new(0, 250, 0, 200) -- Размер меню
-local BUTTON_SIZE = UDim2.new(0, 50, 0, 50) -- Размер кнопки управления
-local LERP_SPEED = 0.15 -- Скорость интерполяции для плавности движения
+local HOVER_AMPLITUDE = 0.1
+local LERP_SPEED = 0.15
 
--- ═════════════════════════════════════════════════════════════════════════════════════
--- ПАРАМЕТРЫ РЕАЛИСТИЧНОЙ ФИЗИКИ И НЕСТАБИЛЬНОСТИ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- Параметры физики
+local MICRO_DROP_CHANCE = 0.05
+local MICRO_DROP_FORCE = 0.3
+local MICRO_STEP_INTENSITY = 0.08
+local RANDOMIZATION_FREQUENCY = 2
 
-local MICRO_DROP_CHANCE = 0.05 -- 5% шанс микропадения за кадр
-local MICRO_DROP_FORCE = 0.3 -- Сила микропадения (0-1.0)
-local MICRO_STEP_INTENSITY = 0.08 -- Интенсивность микрошагов (рывков)
-local RANDOMIZATION_FREQUENCY = 2 -- Как часто обновляется рандомизация (раз в N кадров)
+-- Цвета CS:GO стиля
+local COLOR_BG = Color3.fromRGB(25, 25, 30)
+local COLOR_ACCENT = Color3.fromRGB(100, 200, 255)
+local COLOR_TEXT = Color3.fromRGB(220, 220, 220)
+local COLOR_HOVER = Color3.fromRGB(50, 50, 60)
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
 -- ИНИЦИАЛИЗАЦИЯ
@@ -43,187 +42,168 @@ local humanoid = character:WaitForChild("Humanoid")
 local rootPart = character:WaitForChild("HumanoidRootPart")
 
 local isFlying = false
-local menuOpen = false
+local currentVelocity = Vector3.new(0, 0, 0)
 local hoverTime = 0
 local spaceKeyPressed = false
-local currentVelocity = Vector3.new(0, 0, 0) -- Хранилище текущей скорости для интерполяции
 
--- Переменные для рандомизации и микроэффектов
+-- Переменные для эффектов
 local randomizationTimer = 0
 local currentRandomX = 0
 local currentRandomY = 0
 local currentRandomZ = 0
 local microDropOffset = 0
 
--- Таблица подключений для очистки
+-- Переменные GUI
+local guiMode = "CS" -- CS или Panel
+local currentTab = "MOV"
 local connections = {}
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
--- ФУНКЦИИ СОЗДАНИЯ GUI
+-- ФУНКЦИЯ ЗАГРУЗКИ С АНИМАЦИЕЙ
 -- ═════════════════════════════════════════════════════════════════════════════════════
 
---[[
-    Создает главное меню для управления полетом
-    Возвращает: ScreenGui, ToggleButton, MenuPanel, ToggleIndicator
-]]
-local function createFlightMenu()
-    local playerGui = localPlayer:WaitForChild("PlayerGui")
-    
-    -- Проверка на дубликаты и удаление их
-    local existingGui = playerGui:FindFirstChild("FlightMenu")
-    if existingGui then
-        existingGui:Destroy()
-        wait(0.1)
-    end
+local function showLoadingScreen()
+    local loadingGui = Instance.new("ScreenGui")
+    loadingGui.Name = "LoadingScreen"
+    loadingGui.ResetOnSpawn = false
+    loadingGui.DisplayOrder = 10000
+    loadingGui.Parent = localPlayer:WaitForChild("PlayerGui")
 
-    local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "FlightMenu"
-    screenGui.ResetOnSpawn = false
-    screenGui.DisplayOrder = 9999
-    screenGui.Parent = playerGui
+    local bg = Instance.new("Frame")
+    bg.Name = "Background"
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    bg.BackgroundTransparency = 0
+    bg.BorderSizePixel = 0
+    bg.Parent = loadingGui
 
-    -- ────────────────────────────────────────────────────────────────────────────────
-    -- Кнопка открытия меню (иконка телефона)
-    -- ────────────────────────────────────────────────────────────────────────────────
-    
-    local openMenuButton = Instance.new("ImageButton")
-    openMenuButton.Name = "OpenMenuButton"
-    openMenuButton.Size = BUTTON_SIZE
-    openMenuButton.Position = UDim2.new(1, -65, 0, 15)
-    openMenuButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    openMenuButton.BackgroundTransparency = 0.2
-    openMenuButton.BorderSizePixel = 0
-    openMenuButton.Image = "rbxassetid://6031070534" -- Иконка телефона
-    openMenuButton.ImageScaled = true
-    openMenuButton.Parent = screenGui
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(0, 300, 0, 100)
+    title.Position = UDim2.new(0.5, -150, 0.5, -50)
+    title.BackgroundTransparency = 1
+    title.Text = "XCLIENT"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 60
+    title.Font = Enum.Font.GothamBold
+    title.Parent = bg
 
-    -- Скругления углов кнопки
-    local cornerButton = Instance.new("UICorner")
-    cornerButton.CornerRadius = UDim.new(0, 12)
-    cornerButton.Parent = openMenuButton
+    local loadingBar = Instance.new("Frame")
+    loadingBar.Name = "LoadingBar"
+    loadingBar.Size = UDim2.new(0, 0, 0, 4)
+    loadingBar.Position = UDim2.new(0.5, -150, 0.5, 80)
+    loadingBar.BackgroundColor3 = COLOR_ACCENT
+    loadingBar.BorderSizePixel = 0
+    loadingBar.Parent = bg
 
-    -- Эффект наведения курсора
-    openMenuButton.MouseEnter:Connect(function()
-        local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tween = TweenService:Create(openMenuButton, tweenInfo, {BackgroundTransparency = 0})
-        tween:Play()
+    -- Анимация прогресс-бара
+    local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.In)
+    local tween = TweenService:Create(loadingBar, tweenInfo, {Size = UDim2.new(0, 300, 0, 4)})
+    tween:Play()
+
+    -- Исчезание
+    tween.Completed:Connect(function()
+        wait(0.3)
+        local fadeOut = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local fadeTween = TweenService:Create(bg, fadeOut, {BackgroundTransparency = 1})
+        fadeTween:Play()
+        fadeTween.Completed:Connect(function()
+            loadingGui:Destroy()
+        end)
     end)
-
-    openMenuButton.MouseLeave:Connect(function()
-        if not menuOpen then
-            local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-            local tween = TweenService:Create(openMenuButton, tweenInfo, {BackgroundTransparency = 0.2})
-            tween:Play()
-        end
-    end)
-
-    -- ────────────────────────────────────────────────────────────────────────────────
-    -- Панель меню (темная, появляется при клике)
-    -- ────────────────────────────────────────────────────────────────────────────────
-    
-    local menuPanel = Instance.new("Frame")
-    menuPanel.Name = "MenuPanel"
-    menuPanel.Size = UDim2.new(0, 1, 0, 1) -- Начальный размер (скрыто)
-    menuPanel.Position = UDim2.new(1, -65, 0, 65)
-    menuPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    menuPanel.BorderSizePixel = 0
-    menuPanel.Parent = screenGui
-
-    -- Скругления углов меню
-    local cornerMenu = Instance.new("UICorner")
-    cornerMenu.CornerRadius = UDim.new(0, 15)
-    cornerMenu.Parent = menuPanel
-
-    -- Тень меню
-    local shadow = Instance.new("UIStroke")
-    shadow.Color = Color3.fromRGB(0, 0, 0)
-    shadow.Thickness = 2
-    shadow.Transparency = 0.3
-    shadow.Parent = menuPanel
-
-    -- ────────────────────────────────────────────────────────────────────────────────
-    -- Заголовок меню
-    -- ────────────────────────────────────────────────────────────────────────────────
-    
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Name = "TitleLabel"
-    titleLabel.Size = UDim2.new(1, 0, 0, 40)
-    titleLabel.Position = UDim2.new(0, 0, 0, 0)
-    titleLabel.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    titleLabel.BorderSizePixel = 0
-    titleLabel.Text = "🪄 ПОЛЕТ"
-    titleLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-    titleLabel.TextSize = 14
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.Parent = menuPanel
-
-    -- Нижняя линия заголовка
-    local titleLine = Instance.new("Frame")
-    titleLine.Name = "TitleLine"
-    titleLine.Size = UDim2.new(1, 0, 0, 1)
-    titleLine.Position = UDim2.new(0, 0, 0, 40)
-    titleLine.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
-    titleLine.BorderSizePixel = 0
-    titleLine.Parent = menuPanel
-
-    -- ────────────────────────────────────────────────────────────────────────────────
-    -- Переключатель режима полета
-    -- ────────────────────────────────────────────────────────────────────────────────
-    
-    local toggleContainer = Instance.new("Frame")
-    toggleContainer.Name = "ToggleContainer"
-    toggleContainer.Size = UDim2.new(1, -20, 0, 50)
-    toggleContainer.Position = UDim2.new(0, 10, 0, 55)
-    toggleContainer.BackgroundTransparency = 1
-    toggleContainer.Parent = menuPanel
-
-    local toggleLabel = Instance.new("TextLabel")
-    toggleLabel.Name = "ToggleLabel"
-    toggleLabel.Size = UDim2.new(0.6, 0, 1, 0)
-    toggleLabel.Position = UDim2.new(0, 0, 0, 0)
-    toggleLabel.BackgroundTransparency = 1
-    toggleLabel.Text = "Активировать"
-    toggleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    toggleLabel.TextSize = 12
-    toggleLabel.Font = Enum.Font.Gotham
-    toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    toggleLabel.Parent = toggleContainer
-
-    local toggleButton = Instance.new("TextButton")
-    toggleButton.Name = "ToggleButton"
-    toggleButton.Size = UDim2.new(0, 45, 0, 25)
-    toggleButton.Position = UDim2.new(1, -50, 0.5, -12)
-    toggleButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    toggleButton.BorderSizePixel = 0
-    toggleButton.Text = ""
-    toggleButton.Parent = toggleContainer
-
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, 12)
-    toggleCorner.Parent = toggleButton
-
-    -- Индикатор состояния переключателя
-    local toggleIndicator = Instance.new("Frame")
-    toggleIndicator.Name = "ToggleIndicator"
-    toggleIndicator.Size = UDim2.new(0, 20, 0, 20)
-    toggleIndicator.Position = UDim2.new(0, 2, 0.5, -10)
-    toggleIndicator.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
-    toggleIndicator.BorderSizePixel = 0
-    toggleIndicator.Parent = toggleButton
-
-    local indicatorCorner = Instance.new("UICorner")
-    indicatorCorner.CornerRadius = UDim.new(0, 8)
-    indicatorCorner.Parent = toggleIndicator
-
-    return screenGui, openMenuButton, menuPanel, toggleButton, toggleIndicator
 end
 
---[[
-    Создает летающий эффект (частицы/лучи магии)
-    Возвращает: Attachment с частицами
-]]
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- ФУНКЦИЯ УВЕДОМЛЕНИЙ
+-- ═════════════════════════════════════════════════════════════════════════════════════
+
+local function showNotification(text)
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    
+    local notificationGui = Instance.new("ScreenGui")
+    notificationGui.Name = "Notification"
+    notificationGui.ResetOnSpawn = false
+    notificationGui.DisplayOrder = 9998
+    notificationGui.Parent = playerGui
+
+    local notification = Instance.new("Frame")
+    notification.Name = "NotificationFrame"
+    notification.Size = UDim2.new(0, 300, 0, 60)
+    notification.Position = UDim2.new(1, -320, 1, -80)
+    notification.BackgroundColor3 = COLOR_BG
+    notification.BorderSizePixel = 0
+    notification.Parent = notificationGui
+
+    -- Граница слева цветная
+    local border = Instance.new("Frame")
+    border.Name = "Border"
+    border.Size = UDim2.new(0, 4, 1, 0)
+    border.Position = UDim2.new(0, 0, 0, 0)
+    border.BackgroundColor3 = COLOR_ACCENT
+    border.BorderSizePixel = 0
+    border.Parent = notification
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Text"
+    label.Size = UDim2.new(1, -20, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = COLOR_TEXT
+    label.TextSize = 12
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.Parent = notification
+
+    -- Анимация появления
+    notification.Position = UDim2.new(1, 0, 1, -80)
+    local slideIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local slideInTween = TweenService:Create(notification, slideIn, {Position = UDim2.new(1, -320, 1, -80)})
+    slideInTween:Play()
+
+    -- Автоудаление через 3 сек
+    wait(3)
+    local slideOut = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local slideOutTween = TweenService:Create(notification, slideOut, {Position = UDim2.new(1, 0, 1, -80)})
+    slideOutTween:Play()
+    slideOutTween.Completed:Connect(function()
+        notificationGui:Destroy()
+    end)
+end
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ ФИЗИКИ ПОЛЕТА
+-- ═════════════════════════════════════════════════════════════════════════════════════
+
+local function shouldMicroDrop()
+    return math.random() < MICRO_DROP_CHANCE
+end
+
+local function updateRandomization(deltaTime)
+    randomizationTimer = randomizationTimer + deltaTime
+    
+    if randomizationTimer >= (1 / RANDOMIZATION_FREQUENCY) then
+        randomizationTimer = 0
+        
+        currentRandomX = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY
+        currentRandomY = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY * 0.5
+        currentRandomZ = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY
+    end
+end
+
+local function updateMicroDrops(deltaTime)
+    if shouldMicroDrop() then
+        microDropOffset = microDropOffset - MICRO_DROP_FORCE * deltaTime
+    else
+        microDropOffset = microDropOffset + MICRO_DROP_FORCE * 0.5 * deltaTime
+    end
+    
+    microDropOffset = math.max(microDropOffset, -MICRO_DROP_FORCE)
+    microDropOffset = math.min(microDropOffset, 0)
+end
+
 local function createFlightEffect()
-    -- Проверяем, существует ли уже эффект
     local existingEffect = rootPart:FindFirstChild("FlightEffect")
     if existingEffect then
         existingEffect:Destroy()
@@ -239,7 +219,7 @@ local function createFlightEffect()
     particleEmitter.Lifetime = NumberRange.new(0.8)
     particleEmitter.Speed = NumberRange.new(2)
     particleEmitter.Rotation = NumberRange.new(0, 360)
-    particleEmitter.Color = ColorSequence.new(Color3.fromRGB(100, 150, 255))
+    particleEmitter.Color = ColorSequence.new(COLOR_ACCENT)
     particleEmitter.Transparency = NumberSequence.new(0, 0.5, 1)
     particleEmitter.Parent = attachment
 
@@ -247,68 +227,19 @@ local function createFlightEffect()
 end
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
--- ФУНКЦИИ РЕАЛИСТИЧНОЙ ФИЗИКИ И ЭФФЕКТОВ
--- ════════════════════════════════════════════════════════════════════��════════════════
-
---[[
-    Проверяет, должно ли произойти микропадение
-    Возвращает: boolean
-]]
-local function shouldMicroDrop()
-    return math.random() < MICRO_DROP_CHANCE
-end
-
---[[
-    Обновляет случайные значения для микрошагов (Jitter)
-]]
-local function updateRandomization(deltaTime)
-    randomizationTimer = randomizationTimer + deltaTime
-    
-    if randomizationTimer >= (1 / RANDOMIZATION_FREQUENCY) then
-        randomizationTimer = 0
-        
-        -- Генерируем новые случайные значения для микрошагов
-        currentRandomX = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY
-        currentRandomY = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY * 0.5 -- Y слабее
-        currentRandomZ = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY
-    end
-end
-
---[[
-    Обновляет микропадение с восстановлением
-]]
-local function updateMicroDrops(deltaTime)
-    if shouldMicroDrop() then
-        microDropOffset = microDropOffset - MICRO_DROP_FORCE * deltaTime
-    else
-        -- Постепенно восстанавливаемся от падения
-        microDropOffset = microDropOffset + MICRO_DROP_FORCE * 0.5 * deltaTime
-    end
-    
-    -- Ограничиваем максимальное падение
-    microDropOffset = math.max(microDropOffset, -MICRO_DROP_FORCE)
-    microDropOffset = math.min(microDropOffset, 0)
-end
-
--- ═════════════════════════════════════════════════════════════════════════════════════
 -- ФУНКЦИИ УПРАВЛЕНИЯ ПОЛЕТОМ
 -- ═════════════════════════════════════════════════════════════════════════════════════
 
---[[
-    Активирует режим полета
-]]
 local function activateFlight()
     if isFlying then return end
     isFlying = true
     
-    -- Очищаем старые компоненты, если они остались
     local oldVelocity = rootPart:FindFirstChild("FlightVelocity")
     if oldVelocity then oldVelocity:Destroy() end
     
     local oldGyro = rootPart:FindFirstChild("FlightGyro")
     if oldGyro then oldGyro:Destroy() end
 
-    -- Создаем компоненты управления полетом
     local bodyVelocity = Instance.new("BodyVelocity")
     bodyVelocity.Name = "FlightVelocity"
     bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -323,19 +254,13 @@ local function activateFlight()
     bodyGyro.D = 500
     bodyGyro.Parent = rootPart
 
-    -- Создаем визуальный эффект полета
     createFlightEffect()
 
-    -- Обнуляем текущую скорость и переменные эффектов
     currentVelocity = Vector3.new(0, 0, 0)
     hoverTime = 0
     randomizationTimer = 0
     microDropOffset = 0
-    currentRandomX = 0
-    currentRandomY = 0
-    currentRandomZ = 0
 
-    -- Основной цикл полета
     local heartbeatConnection
     heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
         if not isFlying or not character.Parent or humanoid.Health <= 0 then
@@ -346,99 +271,51 @@ local function activateFlight()
             return
         end
 
-        -- ───────────────────────────────────────────────────────────────────────────
-        -- ОБНОВЛЕНИЕ РАНДОМИЗАЦИИ И МИКРО-ЭФФЕКТОВ
-        -- ───────────────────────────────────────────────────────────────────────────
-
         updateRandomization(deltaTime)
         updateMicroDrops(deltaTime)
 
-        -- ───────────────────────────────────────────────────────────────────────────
-        -- ПОЛУЧЕНИЕ ВХОДНЫХ ДАННЫХ
-        -- ───────────────────────────────────────────────────────────────────────────
+        local moveDirection = humanoid.MoveDirection
+        local verticalInput = spaceKeyPressed and 1 or -1
 
-        local moveDirection = humanoid.MoveDirection -- Работает с мобильным джойстиком
-        local verticalInput = spaceKeyPressed and 1 or -1 -- Space = вверх, иначе = вниз
-
-        -- Проверяем сдвиг для быстрого полета
         local isSprinting = false
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or 
            UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
             isSprinting = true
         end
 
-        -- ───────────────────────────────────────────────────────────────────────────
-        -- РЕАЛИСТИЧНАЯ ФИЗИКА ПОЛЕТА
-        -- ───────────────────────────────────────────────────────────────────────────
-
         local currentSpeed = FLIGHT_SPEED * (isSprinting and 1.5 or 1)
-        
-        -- Направление полета в мировых координатах
         local flightDirection = Vector3.new(moveDirection.X, verticalInput * 0.5, moveDirection.Z)
         
-        -- Если нет ввода, применяем мягкое замедление вместо гравитации
         if flightDirection.Magnitude < 0.1 then
             flightDirection = Vector3.new(0, -0.2, 0)
         else
             flightDirection = flightDirection.Unit
         end
 
-        -- ───────────────────────────────────────────────────────────────────────────
-        -- ИМИТАЦИЯ КОЛЕБАНИЙ (ПАРЕНИЕ В ВОЗДУХЕ)
-        -- ───────────────────────────────────────────────────────────────────────────
-
         hoverTime = hoverTime + deltaTime
         local hoverOffset = math.sin(hoverTime * 2) * HOVER_AMPLITUDE
 
-        -- ───────────────────────────────────────────────────────────────────────────
-        -- МИКРОШАГИ (рывки при движении)
-        -- ───────────────────────────────────────────────────────────────────────────
+        local microStepVector = Vector3.new(currentRandomX, currentRandomY, currentRandomZ)
 
-        local microStepVector = Vector3.new(
-            currentRandomX,
-            currentRandomY,
-            currentRandomZ
-        )
-
-        -- ───────────────────────────────────────────────────────────────────────────
-        -- ПРИМЕНЯЕМ ДВИЖЕНИЕ
-        -- ───────────────────────────────────────────────────────────────────────────
-
-        -- Базовая скорость с направлением
         local targetVelocity = flightDirection * currentSpeed
-        
-        -- Добавляем все эффекты для Y (вертикальной оси)
         local verticalOffset = hoverOffset + microDropOffset
         targetVelocity = targetVelocity + Vector3.new(0, verticalOffset, 0)
-        
-        -- Добавляем микрошаги (случайные рывки)
         targetVelocity = targetVelocity + microStepVector
         
-        -- Плавное lerp для реалистичного ускорения
         currentVelocity = currentVelocity:Lerp(targetVelocity, LERP_SPEED)
         
         bodyVelocity.Velocity = currentVelocity
-        
-        -- Обнуляем ассамблеи для стабильности
         rootPart.AssemblyLinearVelocity = currentVelocity
-
-        -- ───────────────────────────────────────────────────────────────────────────
-        -- НАПРАВЛЕНИЕ КАМЕРЫ
-        -- ───────────────────────────────────────────────────────────────────────────
-
         bodyGyro.CFrame = rootPart.CFrame
     end)
     
     table.insert(connections, heartbeatConnection)
+    showNotification("✓ Полет включен!")
 end
 
---[[
-    Деактивирует режим полета
-]]
 local function deactivateFlight()
     isFlying = false
     
-    -- Удаляем компоненты полета
     local velocity = rootPart:FindFirstChild("FlightVelocity")
     if velocity then velocity:Destroy() end
     
@@ -449,155 +326,346 @@ local function deactivateFlight()
     if effect then effect:Destroy() end
     
     currentVelocity = Vector3.new(0, 0, 0)
+    showNotification("✓ Полет отключен!")
 end
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
--- ФУНКЦИИ АНИМАЦИИ МЕНЮ
+-- СОЗДАНИЕ CS:GO СТИЛЯ GUI
 -- ═════════════════════════════════════════════════════════════════════════════════════
 
---[[
-    Открывает меню с анимацией
-]]
-local function openMenu(menuPanel, openMenuButton)
-    if menuOpen then return end
-    menuOpen = true
-
-    local tweenInfo = TweenInfo.new(
-        TWEEN_DURATION,
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.Out
-    )
-
-    local tweenGoal = {
-        Size = MENU_SIZE,
-        BackgroundTransparency = 0.1
-    }
-
-    local tween = TweenService:Create(menuPanel, tweenInfo, tweenGoal)
-    tween:Play()
+local function createCSGUI()
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
     
-    -- Изменяем прозрачность кнопки при открытии
-    local buttonTweenGoal = { BackgroundTransparency = 0 }
-    local buttonTween = TweenService:Create(openMenuButton, tweenInfo, buttonTweenGoal)
-    buttonTween:Play()
+    local existingGui = playerGui:FindFirstChild("XClientHub")
+    if existingGui then
+        existingGui:Destroy()
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "XClientHub"
+    screenGui.ResetOnSpawn = false
+    screenGui.DisplayOrder = 9999
+    screenGui.Parent = playerGui
+
+    -- ────────────────────────────────────────────────────────────────────────────────
+    -- ИКОНКА СЛЕВА СВЕРХУ
+    -- ────────────────────────────────────────────────────────────────────────────────
+
+    local logoFrame = Instance.new("Frame")
+    logoFrame.Name = "Logo"
+    logoFrame.Size = UDim2.new(0, 120, 0, 120)
+    logoFrame.Position = UDim2.new(0, 15, 0, 15)
+    logoFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    logoFrame.BorderSizePixel = 0
+    logoFrame.Parent = screenGui
+
+    local logoCorner = Instance.new("UICorner")
+    logoCorner.CornerRadius = UDim.new(1, 0)
+    logoCorner.Parent = logoFrame
+
+    local logoShadow = Instance.new("UIStroke")
+    logoShadow.Color = COLOR_ACCENT
+    logoShadow.Thickness = 2
+    logoShadow.Transparency = 0.5
+    logoShadow.Parent = logoFrame
+
+    local logoText = Instance.new("TextLabel")
+    logoText.Size = UDim2.new(1, 0, 1, 0)
+    logoText.BackgroundTransparency = 1
+    logoText.Text = "XCLIENT"
+    logoText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    logoText.TextSize = 16
+    logoText.Font = Enum.Font.GothamBold
+    logoText.Parent = logoFrame
+
+    -- ────────────────────────────────────────────────────────────────────────────────
+    -- ГЛАВНАЯ ПАНЕЛЬ
+    -- ────────────────────────────────────────────────────────────────────────────────
+
+    local mainPanel = Instance.new("Frame")
+    mainPanel.Name = "MainPanel"
+    mainPanel.Size = UDim2.new(0, 400, 0, 500)
+    mainPanel.Position = UDim2.new(1, -420, 0, 15)
+    mainPanel.BackgroundColor3 = COLOR_BG
+    mainPanel.BorderSizePixel = 0
+    mainPanel.Parent = screenGui
+
+    local panelCorner = Instance.new("UICorner")
+    panelCorner.CornerRadius = UDim.new(0, 8)
+    panelCorner.Parent = mainPanel
+
+    local panelStroke = Instance.new("UIStroke")
+    panelStroke.Color = COLOR_ACCENT
+    panelStroke.Thickness = 1
+    panelStroke.Transparency = 0.7
+    panelStroke.Parent = mainPanel
+
+    -- ────────────────────────────────────────────────────────────────────────────────
+    -- ВКЛАДКИ
+    -- ────────────────────────────────────────────────────────────────────────────────
+
+    local tabsContainer = Instance.new("Frame")
+    tabsContainer.Name = "TabsContainer"
+    tabsContainer.Size = UDim2.new(1, 0, 0, 40)
+    tabsContainer.Position = UDim2.new(0, 0, 0, 0)
+    tabsContainer.BackgroundColor3 = COLOR_BG
+    tabsContainer.BorderSizePixel = 0
+    tabsContainer.Parent = mainPanel
+
+    local tabsLine = Instance.new("Frame")
+    tabsLine.Size = UDim2.new(1, 0, 0, 1)
+    tabsLine.Position = UDim2.new(0, 0, 1, -1)
+    tabsLine.BackgroundColor3 = COLOR_ACCENT
+    tabsLine.BorderSizePixel = 0
+    tabsLine.Parent = tabsContainer
+
+    local tabs = {"MOV", "COM", "VISUAL", "GUI"}
+    local tabButtons = {}
+
+    for i, tabName in ipairs(tabs) do
+        local tabButton = Instance.new("TextButton")
+        tabButton.Name = tabName .. "Tab"
+        tabButton.Size = UDim2.new(0, 100, 1, 0)
+        tabButton.Position = UDim2.new(0, (i-1) * 100, 0, 0)
+        tabButton.BackgroundColor3 = COLOR_BG
+        tabButton.BorderSizePixel = 0
+        tabButton.Text = tabName
+        tabButton.TextColor3 = COLOR_TEXT
+        tabButton.TextSize = 12
+        tabButton.Font = Enum.Font.GothamBold
+        tabButton.Parent = tabsContainer
+
+        local underline = Instance.new("Frame")
+        underline.Name = "Underline"
+        underline.Size = UDim2.new(1, 0, 0, 2)
+        underline.Position = UDim2.new(0, 0, 1, -2)
+        underline.BackgroundColor3 = COLOR_ACCENT
+        underline.BorderSizePixel = 0
+        underline.Visible = (i == 1)
+        underline.Parent = tabButton
+
+        tabButtons[tabName] = {button = tabButton, underline = underline}
+    end
+
+    -- ────────────────────────────────────────────────────────────────────────────────
+    -- СОДЕРЖИМОЕ ВКЛАДОК
+    -- ────────────────────────────────────────────────────────────────────────────────
+
+    local contentContainer = Instance.new("Frame")
+    contentContainer.Name = "ContentContainer"
+    contentContainer.Size = UDim2.new(1, 0, 1, -40)
+    contentContainer.Position = UDim2.new(0, 0, 0, 40)
+    contentContainer.BackgroundTransparency = 1
+    contentContainer.BorderSizePixel = 0
+    contentContainer.Parent = mainPanel
+
+    local tabContents = {}
+
+    -- MOV TAB
+    local movTab = Instance.new("Frame")
+    movTab.Name = "MOVContent"
+    movTab.Size = UDim2.new(1, 0, 1, 0)
+    movTab.BackgroundTransparency = 1
+    movTab.Visible = true
+    movTab.Parent = contentContainer
+
+    local flightLabel = Instance.new("TextLabel")
+    flightLabel.Size = UDim2.new(1, -20, 0, 20)
+    flightLabel.Position = UDim2.new(0, 10, 0, 20)
+    flightLabel.BackgroundTransparency = 1
+    flightLabel.Text = "Flight System"
+    flightLabel.TextColor3 = COLOR_ACCENT
+    flightLabel.TextSize = 14
+    flightLabel.Font = Enum.Font.GothamBold
+    flightLabel.TextXAlignment = Enum.TextXAlignment.Left
+    flightLabel.Parent = movTab
+
+    local flightToggle = Instance.new("TextButton")
+    flightToggle.Name = "FlightToggle"
+    flightToggle.Size = UDim2.new(1, -20, 0, 40)
+    flightToggle.Position = UDim2.new(0, 10, 0, 50)
+    flightToggle.BackgroundColor3 = COLOR_HOVER
+    flightToggle.BorderSizePixel = 0
+    flightToggle.Text = "🪄 Enable Flight"
+    flightToggle.TextColor3 = COLOR_TEXT
+    flightToggle.TextSize = 12
+    flightToggle.Font = Enum.Font.Gotham
+    flightToggle.Parent = movTab
+
+    local flightCorner = Instance.new("UICorner")
+    flightCorner.CornerRadius = UDim.new(0, 6)
+    flightCorner.Parent = flightToggle
+
+    flightToggle.MouseButton1Click:Connect(function()
+        if isFlying then
+            deactivateFlight()
+            flightToggle.Text = "🪄 Enable Flight"
+        else
+            activateFlight()
+            flightToggle.Text = "🪄 Disable Flight"
+        end
+    end)
+
+    -- GUI TAB
+    local guiTab = Instance.new("Frame")
+    guiTab.Name = "GUIContent"
+    guiTab.Size = UDim2.new(1, 0, 1, 0)
+    guiTab.BackgroundTransparency = 1
+    guiTab.Visible = false
+    guiTab.Parent = contentContainer
+
+    local guiLabel = Instance.new("TextLabel")
+    guiLabel.Size = UDim2.new(1, -20, 0, 20)
+    guiLabel.Position = UDim2.new(0, 10, 0, 20)
+    guiLabel.BackgroundTransparency = 1
+    guiLabel.Text = "GUI Style"
+    guiLabel.TextColor3 = COLOR_ACCENT
+    guiLabel.TextSize = 14
+    guiLabel.Font = Enum.Font.GothamBold
+    guiLabel.TextXAlignment = Enum.TextXAlignment.Left
+    guiLabel.Parent = guiTab
+
+    local csButton = Instance.new("TextButton")
+    csButton.Name = "CSButton"
+    csButton.Size = UDim2.new(0.5, -10, 0, 40)
+    csButton.Position = UDim2.new(0, 10, 0, 50)
+    csButton.BackgroundColor3 = COLOR_ACCENT
+    csButton.BorderSizePixel = 0
+    csButton.Text = "CS Style"
+    csButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    csButton.TextSize = 12
+    csButton.Font = Enum.Font.GothamBold
+    csButton.Parent = guiTab
+
+    local csCorner = Instance.new("UICorner")
+    csCorner.CornerRadius = UDim.new(0, 6)
+    csCorner.Parent = csButton
+
+    local panelButton = Instance.new("TextButton")
+    panelButton.Name = "PanelButton"
+    panelButton.Size = UDim2.new(0.5, -10, 0, 40)
+    panelButton.Position = UDim2.new(0.5, 0, 0, 50)
+    panelButton.BackgroundColor3 = COLOR_HOVER
+    panelButton.BorderSizePixel = 0
+    panelButton.Text = "Panel Style"
+    panelButton.TextColor3 = COLOR_TEXT
+    panelButton.TextSize = 12
+    panelButton.Font = Enum.Font.GothamBold
+    panelButton.Parent = guiTab
+
+    local panelCorner = Instance.new("UICorner")
+    panelCorner.CornerRadius = UDim.new(0, 6)
+    panelCorner.Parent = panelButton
+
+    csButton.MouseButton1Click:Connect(function()
+        guiMode = "CS"
+        csButton.BackgroundColor3 = COLOR_ACCENT
+        csButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        panelButton.BackgroundColor3 = COLOR_HOVER
+        panelButton.TextColor3 = COLOR_TEXT
+        showNotification("✓ GUI стиль: CS")
+    end)
+
+    panelButton.MouseButton1Click:Connect(function()
+        guiMode = "Panel"
+        panelButton.BackgroundColor3 = COLOR_ACCENT
+        panelButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        csButton.BackgroundColor3 = COLOR_HOVER
+        csButton.TextColor3 = COLOR_TEXT
+        showNotification("✓ GUI стиль: Panel")
+    end)
+
+    -- COM TAB (пусто)
+    local comTab = Instance.new("Frame")
+    comTab.Name = "COMContent"
+    comTab.Size = UDim2.new(1, 0, 1, 0)
+    comTab.BackgroundTransparency = 1
+    comTab.Visible = false
+    comTab.Parent = contentContainer
+
+    local comLabel = Instance.new("TextLabel")
+    comLabel.Size = UDim2.new(1, -20, 0, 20)
+    comLabel.Position = UDim2.new(0, 10, 0, 20)
+    comLabel.BackgroundTransparency = 1
+    comLabel.Text = "Coming Soon..."
+    comLabel.TextColor3 = COLOR_TEXT
+    comLabel.TextSize = 12
+    comLabel.Font = Enum.Font.Gotham
+    comLabel.TextXAlignment = Enum.TextXAlignment.Left
+    comLabel.Parent = comTab
+
+    -- VISUAL TAB (пусто)
+    local visualTab = Instance.new("Frame")
+    visualTab.Name = "VISUALContent"
+    visualTab.Size = UDim2.new(1, 0, 1, 0)
+    visualTab.BackgroundTransparency = 1
+    visualTab.Visible = false
+    visualTab.Parent = contentContainer
+
+    local visualLabel = Instance.new("TextLabel")
+    visualLabel.Size = UDim2.new(1, -20, 0, 20)
+    visualLabel.Position = UDim2.new(0, 10, 0, 20)
+    visualLabel.BackgroundTransparency = 1
+    visualLabel.Text = "Coming Soon..."
+    visualLabel.TextColor3 = COLOR_TEXT
+    visualLabel.TextSize = 12
+    visualLabel.Font = Enum.Font.Gotham
+    visualLabel.TextXAlignment = Enum.TextXAlignment.Left
+    visualLabel.Parent = visualTab
+
+    -- ────────────────────────────────────────────────────────────────────────────────
+    -- ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ ВКЛАДОК
+    -- ────────────────────────────────────────────────────────────────────────────────
+
+    local function switchTab(tabName)
+        currentTab = tabName
+        
+        -- Скрыть все вкладки
+        for _, child in ipairs(contentContainer:GetChildren()) do
+            child.Visible = false
+        end
+
+        -- Показать выбранную вкладку
+        if tabName == "MOV" then
+            movTab.Visible = true
+        elseif tabName == "COM" then
+            comTab.Visible = true
+        elseif tabName == "VISUAL" then
+            visualTab.Visible = true
+        elseif tabName == "GUI" then
+            guiTab.Visible = true
+        end
+
+        -- Обновить подчеркивание
+        for name, tab in pairs(tabButtons) do
+            tab.underline.Visible = (name == tabName)
+        end
+    end
+
+    -- Подключить кнопки вкладок
+    for tabName, tab in pairs(tabButtons) do
+        tab.button.MouseButton1Click:Connect(function()
+            switchTab(tabName)
+        end)
+    end
+
+    return screenGui
 end
 
---[[
-    Закрывает меню с анимацией
-]]
-local function closeMenu(menuPanel, openMenuButton)
-    if not menuOpen then return end
-    menuOpen = false
-
-    local tweenInfo = TweenInfo.new(
-        TWEEN_DURATION,
-        Enum.EasingStyle.Quad,
-        Enum.EasingDirection.In
-    )
-
-    local tweenGoal = {
-        Size = UDim2.new(0, 1, 0, 1),
-        BackgroundTransparency = 1
-    }
-
-    local tween = TweenService:Create(menuPanel, tweenInfo, tweenGoal)
-    tween:Play()
-    
-    -- Восстанавливаем прозрачность кнопки
-    local buttonTweenGoal = { BackgroundTransparency = 0.2 }
-    local buttonTween = TweenService:Create(openMenuButton, tweenInfo, buttonTweenGoal)
-    buttonTween:Play()
-end
-
 -- ═════════════════════════════════════════════════════════════════════════════════════
--- ИНИЦИАЛИЗАЦИЯ ИНТЕРФЕЙСА
+-- ОБРАБОТЧИКИ ВВОДА
 -- ═════════════════════════════════════════════════════════════════════════════════════
 
-local screenGui, openMenuButton, menuPanel, toggleButton, toggleIndicator = createFlightMenu()
-
--- ═════════════════════════════════════════════════════════════════════════════════════
--- ОБРАБОТЧИКИ СОБЫТИЙ UI
--- ═════════════════════════════════════════════════════════════════════════════════════
-
---[[
-    Обработчик клика по кнопке открытия меню
-]]
-local openMenuConnection = openMenuButton.MouseButton1Click:Connect(function()
-    if menuOpen then
-        closeMenu(menuPanel, openMenuButton)
-    else
-        openMenu(menuPanel, openMenuButton)
-    end
-end)
-
-table.insert(connections, openMenuConnection)
-
---[[
-    Обработчик клика по переключателю полета
-]]
-local toggleConnection = toggleButton.MouseButton1Click:Connect(function()
-    if isFlying then
-        deactivateFlight()
-        
-        -- Анимация переключателя (выключение)
-        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tweenGoal = {
-            BackgroundColor3 = Color3.fromRGB(50, 50, 50),
-            Position = UDim2.new(0, 2, 0.5, -10)
-        }
-        local indicatorGoal = { BackgroundColor3 = Color3.fromRGB(150, 150, 150) }
-        
-        local tween1 = TweenService:Create(toggleButton, tweenInfo, tweenGoal)
-        local tween2 = TweenService:Create(toggleIndicator, tweenInfo, indicatorGoal)
-        
-        tween1:Play()
-        tween2:Play()
-    else
-        activateFlight()
-        
-        -- Анимация переключателя (включение)
-        local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        local tweenGoal = {
-            BackgroundColor3 = Color3.fromRGB(100, 200, 255),
-            Position = UDim2.new(0, 23, 0.5, -10)
-        }
-        local indicatorGoal = { BackgroundColor3 = Color3.fromRGB(100, 200, 255) }
-        
-        local tween1 = TweenService:Create(toggleButton, tweenInfo, tweenGoal)
-        local tween2 = TweenService:Create(toggleIndicator, tweenInfo, indicatorGoal)
-        
-        tween1:Play()
-        tween2:Play()
-    end
-end)
-
-table.insert(connections, toggleConnection)
-
--- ═════════════════════════════════════════════════════════════════════════════════════
--- ОБРАБОТЧИКИ ВВОДА КЛАВИАТУРЫ
--- ═════════════════════════════════════════════════════════════════════════════════════
-
---[[
-    Отслеживание нажатия SPACE для подъема
-]]
 local inputBeganConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
     if input.KeyCode == Enum.KeyCode.Space then
         spaceKeyPressed = true
     end
-    
-    -- Закрытие меню при нажатии ESC
-    if input.KeyCode == Enum.KeyCode.Escape and menuOpen then
-        closeMenu(menuPanel, openMenuButton)
-    end
 end)
 
 table.insert(connections, inputBeganConnection)
 
---[[
-    Отслеживание отпускания SPACE
-]]
 local inputEndedConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.Space then
         spaceKeyPressed = false
@@ -607,57 +675,47 @@ end)
 table.insert(connections, inputEndedConnection)
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
--- ОБРАБОТЧИК СМЕРТИ ИГРОКА
+-- ОБРАБОТЧИКИ СМЕРТИ И СМЕНЫ ПЕРСОНАЖА
 -- ═════════════════════════════════════════════════════════════════════════════════════
 
 local diedConnection = humanoid.Died:Connect(function()
     deactivateFlight()
     
-    -- Очищаем все подключения
     for _, connection in ipairs(connections) do
         if connection and connection.Connected then
             connection:Disconnect()
         end
     end
-    
-    screenGui:Destroy()
 end)
 
 table.insert(connections, diedConnection)
 
--- ═════════════════════════════════════════════════════════════════════════════════════
--- ОБРАБОТЧИК СМЕНЫ ПЕРСОНАЖА
--- ═════════════════════════════════════════════════════════════════════════════════════
-
 local characterAddedConnection = localPlayer.CharacterAdded:Connect(function(newCharacter)
     deactivateFlight()
     
-    -- Очищаем все подкл��чения
     for _, connection in ipairs(connections) do
         if connection and connection.Connected then
             connection:Disconnect()
         end
     end
     
-    screenGui:Destroy()
     script:Destroy()
 end)
 
 table.insert(connections, characterAddedConnection)
 
 -- ═════════════════════════════════════════════════════════════════════════════════════
--- ЛОГИРОВАНИЕ (ОТЛАДКА)
+-- ИНИЦИАЛИЗАЦИЯ
 -- ═════════════════════════════════════════════════════════════════════════════════════
 
-print("✓ Система магического полета v1.2.0 инициализирована успешно!")
-print(string.format("✓ Скорость полета: %d studs/s", FLIGHT_SPEED))
-print("✓ Режим ускорения: Shift (1.5x скорость)")
-print("✓ Полет вверх: Пробел | Полет вниз: опустить палец со спейса")
-print("")
-print("🎯 ЭФФЕКТЫ РЕАЛИСТИЧНОСТИ:")
-print(string.format("  • Микропадения: %d%% шанс за кадр", MICRO_DROP_CHANCE * 100))
-print(string.format("  • Микрошаги (Jitter): интенсивность %.2f", MICRO_STEP_INTENSITY))
-print(string.format("  • Частота обновления: %d раз/сек", RANDOMIZATION_FREQUENCY))
-print("")
-print("⚙️ КОМАНДЫ НАСТРОЙКИ:")
-print("  _G.FlightSpeed = 20; script:Destroy()")
+showLoadingScreen()
+wait(3)
+createCSGUI()
+showNotification("✓ XCLIENT v1.3.0 загружен!")
+
+print("═════════════════════════════════════════════════════════════════")
+print("✓ XCLIENT v1.3.0 инициализирован успешно!")
+print("✓ Стиль: CS:GO")
+print("✓ Функции: MOV, COM, VISUAL, GUI")
+print("✓ Полет: Вкладка MOV")
+print("═════════════════════════════════════════════════════════════════")
