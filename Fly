@@ -1,11 +1,41 @@
 --[[
     ═════════════════════════════════════════════════════════════════════════════════════
-    XCLIENT v1.3.0 - ПРОФЕССИОНАЛЬНЫЙ HUB DENGAN CS:GO СТИЛЕМ
+    XCLIENT v1.3.0 - PROFESSIONELLES HUB MIT CS:GO STIL
+    Kompatibel mit: Delta, Xeno, Fluxus, Codex
     Система магического полета с реалистичной физикой
     Версия: 1.3.0
     Автор: Магический полет
     ═════════════════════════════════════════════════════════════════════════════════════
 --]]
+
+-- ═════════════════════════════════════════════════════════════════════════════════════
+-- ПРОВЕРКА СОВМЕСТИМОСТИ И ИНИЦИАЛИЗАЦИЯ
+-- ═════════════════════════════════════════════════════════════════════════════════════
+
+local isExecutor = false
+local executorName = "Unknown"
+
+-- Проверка для каждого executor
+if _G.delta or (game:FindFirstChild("delta") and game.delta:FindFirstChild("getIdentity")) then
+    executorName = "Delta"
+    isExecutor = true
+elseif _G.xeno or (game:FindFirstChild("xeno") and game.xeno:FindFirstChild("getIdentity")) then
+    executorName = "Xeno"
+    isExecutor = true
+elseif _G.fluxus or (game:FindFirstChild("fluxus")) then
+    executorName = "Fluxus"
+    isExecutor = true
+elseif _G.codex or (game:FindFirstChild("codex")) then
+    executorName = "Codex"
+    isExecutor = true
+elseif script.Parent:IsA("BindableFunction") or script.Parent:IsA("BindableEvent") then
+    executorName = "Universal"
+    isExecutor = true
+end
+
+if not isExecutor then
+    warn("⚠️ Executor не обнаружен. Некоторые функции могут работать неправильно.")
+end
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -54,7 +84,7 @@ local currentRandomZ = 0
 local microDropOffset = 0
 
 -- Переменные GUI
-local guiMode = "CS" -- CS или Panel
+local guiMode = "CS"
 local currentTab = "MOV"
 local connections = {}
 
@@ -87,6 +117,17 @@ local function showLoadingScreen()
     title.TextSize = 60
     title.Font = Enum.Font.GothamBold
     title.Parent = bg
+
+    local executorLabel = Instance.new("TextLabel")
+    executorLabel.Name = "ExecutorLabel"
+    executorLabel.Size = UDim2.new(0, 300, 0, 30)
+    executorLabel.Position = UDim2.new(0.5, -150, 0.5, 30)
+    executorLabel.BackgroundTransparency = 1
+    executorLabel.Text = "Executor: " .. executorName
+    executorLabel.TextColor3 = COLOR_ACCENT
+    executorLabel.TextSize = 14
+    executorLabel.Font = Enum.Font.Gotham
+    executorLabel.Parent = bg
 
     local loadingBar = Instance.new("Frame")
     loadingBar.Name = "LoadingBar"
@@ -459,8 +500,6 @@ local function createCSGUI()
     contentContainer.BorderSizePixel = 0
     contentContainer.Parent = mainPanel
 
-    local tabContents = {}
-
     -- MOV TAB
     local movTab = Instance.new("Frame")
     movTab.Name = "MOVContent"
@@ -496,13 +535,37 @@ local function createCSGUI()
     flightCorner.CornerRadius = UDim.new(0, 6)
     flightCorner.Parent = flightToggle
 
+    local flightStroke = Instance.new("UIStroke")
+    flightStroke.Color = COLOR_ACCENT
+    flightStroke.Thickness = 1
+    flightStroke.Transparency = 0.5
+    flightStroke.Parent = flightToggle
+
     flightToggle.MouseButton1Click:Connect(function()
         if isFlying then
             deactivateFlight()
             flightToggle.Text = "🪄 Enable Flight"
+            flightToggle.BackgroundColor3 = COLOR_HOVER
         else
             activateFlight()
             flightToggle.Text = "🪄 Disable Flight"
+            flightToggle.BackgroundColor3 = COLOR_ACCENT
+            flightToggle.TextColor3 = Color3.fromRGB(0, 0, 0)
+        end
+    end)
+
+    -- Эффект наведения
+    flightToggle.MouseEnter:Connect(function()
+        if not isFlying then
+            local tween = TweenService:Create(flightToggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
+            tween:Play()
+        end
+    end)
+
+    flightToggle.MouseLeave:Connect(function()
+        if not isFlying then
+            local tween = TweenService:Create(flightToggle, TweenInfo.new(0.2), {BackgroundColor3 = COLOR_HOVER})
+            tween:Play()
         end
     end)
 
@@ -541,35 +604,35 @@ local function createCSGUI()
     csCorner.CornerRadius = UDim.new(0, 6)
     csCorner.Parent = csButton
 
-    local panelButton = Instance.new("TextButton")
-    panelButton.Name = "PanelButton"
-    panelButton.Size = UDim2.new(0.5, -10, 0, 40)
-    panelButton.Position = UDim2.new(0.5, 0, 0, 50)
-    panelButton.BackgroundColor3 = COLOR_HOVER
-    panelButton.BorderSizePixel = 0
-    panelButton.Text = "Panel Style"
-    panelButton.TextColor3 = COLOR_TEXT
-    panelButton.TextSize = 12
-    panelButton.Font = Enum.Font.GothamBold
-    panelButton.Parent = guiTab
+    local panelButtonGui = Instance.new("TextButton")
+    panelButtonGui.Name = "PanelButton"
+    panelButtonGui.Size = UDim2.new(0.5, -10, 0, 40)
+    panelButtonGui.Position = UDim2.new(0.5, 0, 0, 50)
+    panelButtonGui.BackgroundColor3 = COLOR_HOVER
+    panelButtonGui.BorderSizePixel = 0
+    panelButtonGui.Text = "Panel Style"
+    panelButtonGui.TextColor3 = COLOR_TEXT
+    panelButtonGui.TextSize = 12
+    panelButtonGui.Font = Enum.Font.GothamBold
+    panelButtonGui.Parent = guiTab
 
-    local panelCorner = Instance.new("UICorner")
-    panelCorner.CornerRadius = UDim.new(0, 6)
-    panelCorner.Parent = panelButton
+    local panelCornerGui = Instance.new("UICorner")
+    panelCornerGui.CornerRadius = UDim.new(0, 6)
+    panelCornerGui.Parent = panelButtonGui
 
     csButton.MouseButton1Click:Connect(function()
         guiMode = "CS"
         csButton.BackgroundColor3 = COLOR_ACCENT
         csButton.TextColor3 = Color3.fromRGB(0, 0, 0)
-        panelButton.BackgroundColor3 = COLOR_HOVER
-        panelButton.TextColor3 = COLOR_TEXT
+        panelButtonGui.BackgroundColor3 = COLOR_HOVER
+        panelButtonGui.TextColor3 = COLOR_TEXT
         showNotification("✓ GUI стиль: CS")
     end)
 
-    panelButton.MouseButton1Click:Connect(function()
+    panelButtonGui.MouseButton1Click:Connect(function()
         guiMode = "Panel"
-        panelButton.BackgroundColor3 = COLOR_ACCENT
-        panelButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        panelButtonGui.BackgroundColor3 = COLOR_ACCENT
+        panelButtonGui.TextColor3 = Color3.fromRGB(0, 0, 0)
         csButton.BackgroundColor3 = COLOR_HOVER
         csButton.TextColor3 = COLOR_TEXT
         showNotification("✓ GUI стиль: Panel")
@@ -620,12 +683,10 @@ local function createCSGUI()
     local function switchTab(tabName)
         currentTab = tabName
         
-        -- Скрыть все вкладки
         for _, child in ipairs(contentContainer:GetChildren()) do
             child.Visible = false
         end
 
-        -- Показать выбранную вкладку
         if tabName == "MOV" then
             movTab.Visible = true
         elseif tabName == "COM" then
@@ -636,13 +697,11 @@ local function createCSGUI()
             guiTab.Visible = true
         end
 
-        -- Обновить подчеркивание
         for name, tab in pairs(tabButtons) do
             tab.underline.Visible = (name == tabName)
         end
     end
 
-    -- Подключить кнопки вкладок
     for tabName, tab in pairs(tabButtons) do
         tab.button.MouseButton1Click:Connect(function()
             switchTab(tabName)
@@ -712,10 +771,12 @@ showLoadingScreen()
 wait(3)
 createCSGUI()
 showNotification("✓ XCLIENT v1.3.0 загружен!")
+showNotification("✓ Executor: " .. executorName)
 
 print("═════════════════════════════════════════════════════════════════")
 print("✓ XCLIENT v1.3.0 инициализирован успешно!")
+print("✓ Executor: " .. executorName)
 print("✓ Стиль: CS:GO")
 print("✓ Функции: MOV, COM, VISUAL, GUI")
-print("✓ Полет: Вкладка MOV")
+print("✓ Полет: Вкладка MOV → Enable Flight")
 print("═════════════════════════════════════════════════════════════════")
