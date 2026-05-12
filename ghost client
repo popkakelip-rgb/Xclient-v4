@@ -1,57 +1,254 @@
-local g=Instance.new("ScreenGui",game.Players.LocalPlayer.PlayerGui)
-g.ResetOnSpawn=false
 
-local f=Instance.new("Frame",g)
-f.Size=UDim2.new(0.9,0,0.75,0)
-f.Position=UDim2.new(0.05,0,0.12,0)
-f.BackgroundColor3=Color3.fromRGB(12,12,12)
-f.Active=true
-f.Draggable=true
+-- SWILL - Ghost Client GUI (Blox Fruits стиль)
 
-local c=Instance.new("UICorner",f)
-c.CornerRadius=UDim.new(0,18)
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
 
-local line=Instance.new("Frame",f)
-line.Size=UDim2.new(1,0,0,2)
-line.Position=UDim2.new(0,0,0.07,0)
-line.BackgroundColor3=Color3.fromRGB(170,85,255)
-line.BorderSizePixel=0
+-- Создаем иконку
+local iconButton = Instance.new("ImageButton")
+iconButton.Size = UDim2.new(0, 50, 0, 50)
+iconButton.Position = UDim2.new(0, 10, 0, 10)
+iconButton.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+iconButton.BackgroundTransparency = 0.15
+iconButton.Image = "rbxassetid://6031098373"
+iconButton.BorderSizePixels = 0
+iconButton.Parent = player.PlayerGui
 
-local title=Instance.new("TextLabel",f)
-title.Size=UDim2.new(0.4,0,0.07,0)
-title.Position=UDim2.new(0.03,0,0,0)
-title.BackgroundTransparency=1
-title.Text="Ghost Client"
-title.TextColor3=Color3.fromRGB(170,85,255)
-title.Font=Enum.Font.GothamBold
-title.TextScaled=true
+local iconCorner = Instance.new("UICorner")
+iconCorner.CornerRadius = UDim.new(1, 0)
+iconCorner.Parent = iconButton
 
-local esp=Instance.new("Frame",f)
-esp.Size=UDim2.new(0.94,0,0.12,0)
-esp.Position=UDim2.new(0.03,0,0.11,0)
-esp.BackgroundColor3=Color3.fromRGB(18,18,18)
+-- Главное окно
+local mainGui = Instance.new("Frame")
+mainGui.Size = UDim2.new(0, 650, 0, 450)
+mainGui.Position = UDim2.new(0.5, -325, 0.5, -225)
+mainGui.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+mainGui.BorderSizePixels = 0
+mainGui.Visible = false
+mainGui.Parent = player.PlayerGui
 
-local ec=Instance.new("UICorner",esp)
-ec.CornerRadius=UDim.new(0,14)
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.Parent = mainGui
 
-local txt=Instance.new("TextLabel",esp)
-txt.Size=UDim2.new(0.5,0,1,0)
-txt.Position=UDim2.new(0.05,0,0,0)
-txt.BackgroundTransparency=1
-txt.Text="ESP"
-txt.TextColor3=Color3.new(1,1,1)
-txt.Font=Enum.Font.GothamBold
-txt.TextScaled=true
-txt.TextXAlignment=Enum.TextXAlignment.Left
+-- Тень
+local shadow = Instance.new("UIShadow")
+shadow.Parent = mainGui
 
-local btn=Instance.new("TextButton",esp)
-btn.Size=UDim2.new(0.18,0,0.55,0)
-btn.Position=UDim2.new(0.77,0,0.22,0)
-btn.Text="ON"
-btn.BackgroundColor3=Color3.fromRGB(170,85,255)
-btn.TextColor3=Color3.new(1,1,1)
-btn.Font=Enum.Font.GothamBold
-btn.TextScaled=true
+-- Верхняя панель
+local topBar = Instance.new("Frame")
+topBar.Size = UDim2.new(1, 0, 0, 45)
+topBar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+topBar.BorderSizePixels = 0
+topBar.Parent = mainGui
 
-local bc=Instance.new("UICorner",btn)
-bc.CornerRadius=UDim.new(1,0)
+local topCorner = Instance.new("UICorner")
+topCorner.CornerRadius = UDim.new(0, 12)
+topCorner.Parent = topBar
+
+-- Отсекаем нижние углы у topBar
+local clip = Instance.new("UIClipping")
+clip.Parent = topBar
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -50, 1, 0)
+title.Position = UDim2.new(0, 15, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "GHOST CLIENT"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.Parent = topBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 40, 1, 0)
+closeBtn.Position = UDim2.new(1, -45, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+closeBtn.BorderSizePixels = 0
+closeBtn.Parent = topBar
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 6)
+closeCorner.Parent = closeBtn
+
+closeBtn.MouseButton1Click:Connect(function()
+    mainGui.Visible = false
+end)
+
+-- Контейнер для левой панели (ESP и основной контент)
+local leftPanel = Instance.new("Frame")
+leftPanel.Size = UDim2.new(0, 200, 1, -45)
+leftPanel.Position = UDim2.new(0, 0, 0, 45)
+leftPanel.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+leftPanel.BorderSizePixels = 0
+leftPanel.Parent = mainGui
+
+local leftCorner = Instance.new("UICorner")
+leftCorner.CornerRadius = UDim.new(0, 0)
+leftCorner.Parent = leftPanel
+
+-- Заголовок ESP
+local espTitle = Instance.new("TextLabel")
+espTitle.Size = UDim2.new(1, 0, 0, 40)
+espTitle.Position = UDim2.new(0, 0, 0, 10)
+espTitle.BackgroundTransparency = 1
+espTitle.Text = "ESP"
+espTitle.TextColor3 = Color3.fromRGB(255, 100, 150)
+espTitle.TextXAlignment = Enum.TextXAlignment.Center
+espTitle.Font = Enum.Font.GothamBold
+espTitle.TextSize = 22
+espTitle.Parent = leftPanel
+
+-- Кнопка ESP Toggle
+local espToggle = Instance.new("TextButton")
+espToggle.Size = UDim2.new(0, 160, 0, 40)
+espToggle.Position = UDim2.new(0.5, -80, 0, 60)
+espToggle.BackgroundColor3 = Color3.fromRGB(255, 70, 120)
+espToggle.Text = "ESP: OFF"
+espToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+espToggle.Font = Enum.Font.Gotham
+espToggle.TextSize = 16
+espToggle.BorderSizePixels = 0
+espToggle.Parent = leftPanel
+
+local espCorner = Instance.new("UICorner")
+espCorner.CornerRadius = UDim.new(0, 8)
+espCorner.Parent = espToggle
+
+local espEnabled = false
+local espObjects = {}
+
+-- Функция создания ESP (бокс + имя)
+local function createESP(character)
+    if not espEnabled then return end
+    local humanoid = character:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    if character.Name == player.Name then return end
+
+local box = Instance.new("BoxHandleAdornment")
+    box.Size = Vector3.new(3, 5, 3)
+    box.Adornee = character
+    box.Color3 = Color3.fromRGB(255, 70, 120)
+    box.AlwaysOnTop = true
+    box.ZIndex = 10
+    box.Parent = character
+    
+    local nameTag = Instance.new("BillboardGui")
+    nameTag.Size = UDim2.new(0, 100, 0, 30)
+    nameTag.Adornee = character
+    nameTag.StudsOffset = Vector3.new(0, 3, 0)
+    nameTag.Parent = character
+    
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = character.Name
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextStrokeTransparency = 0.3
+    nameLabel.Font = Enum.Font.Gotham
+    nameLabel.TextSize = 12
+    nameLabel.Parent = nameTag
+    
+    table.insert(espObjects, {box = box, tag = nameTag, char = character})
+end
+
+local function clearESP()
+    for _, obj in pairs(espObjects) do
+        if obj.box and obj.box.Parent then obj.box:Destroy() end
+        if obj.tag and obj.tag.Parent then obj.tag:Destroy() end
+    end
+    espObjects = {}
+end
+
+espToggle.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    if espEnabled then
+        espToggle.BackgroundColor3 = Color3.fromRGB(80, 220, 100)
+        espToggle.Text = "ESP: ON"
+        for _, char in pairs(workspace:GetChildren()) do
+            if char:FindFirstChild("Humanoid") then
+                createESP(char)
+            end
+        end
+    else
+        espToggle.BackgroundColor3 = Color3.fromRGB(255, 70, 120)
+        espToggle.Text = "ESP: OFF"
+        clearESP()
+    end
+end)
+
+-- Отслеживание новых персонажей
+workspace.ChildAdded:Connect(function(child)
+    if espEnabled and child:FindFirstChild("Humanoid") then
+        createESP(child)
+    end
+end)
+
+workspace.ChildRemoved:Connect(function(child)
+    if espEnabled then
+        for i, obj in pairs(espObjects) do
+            if obj.char == child then
+                if obj.box then obj.box:Destroy() end
+                if obj.tag then obj.tag:Destroy() end
+                table.remove(espObjects, i)
+                break
+            end
+        end
+    end
+end)
+
+-- Правая панель (пустая, только заголовок)
+local rightPanel = Instance.new("Frame")
+rightPanel.Size = UDim2.new(1, -200, 1, -45)
+rightPanel.Position = UDim2.new(0, 200, 0, 45)
+rightPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+rightPanel.BorderSizePixels = 0
+rightPanel.Parent = mainGui
+
+local rightCorner = Instance.new("UICorner")
+rightCorner.CornerRadius = UDim.new(0, 12)
+rightCorner.Parent = rightPanel
+
+-- Декоративный текст
+local ghostText = Instance.new("TextLabel")
+ghostText.Size = UDim2.new(1, 0, 0, 50)
+ghostText.Position = UDim2.new(0, 0, 0.5, -25)
+ghostText.BackgroundTransparency = 1
+ghostText.Text = "GHOST CLIENT"
+ghostText.TextColor3 = Color3.fromRGB(255, 100, 150)
+ghostText.TextXAlignment = Enum.TextXAlignment.Center
+ghostText.Font = Enum.Font.GothamBold
+ghostText.TextSize = 28
+ghostText.TextTransparency = 0.7
+ghostText.Parent = rightPanel
+
+local subText = Instance.new("TextLabel")
+subText.Size = UDim2.new(1, 0, 0, 30)
+subText.Position = UDim2.new(0, 0, 0.6, 0)
+subText.BackgroundTransparency = 1
+subText.Text = "SWILL EDITION"
+subText.TextColor3 = Color3.fromRGB(150, 150, 180)
+subText.TextXAlignment = Enum.TextXAlignment.Center
+subText.Font = Enum.Font.Gotham
+subText.TextSize = 14
+subText.TextTransparency = 0.5
+subText.Parent = rightPanel
+
+-- Открытие GUI
+iconButton.MouseButton1Click:Connect(function()
+    mainGui.Visible = not mainGui.Visible
+end)
+
+-- Анимация при наведении на иконку
+iconButton.MouseEnter:Connect(function()
+    iconButton.BackgroundTransparency = 0
+end)
+iconButton.MouseLeave:Connect(function()
+    iconButton.BackgroundTransparency = 0.15
+end)
