@@ -1,143 +1,391 @@
--- SWILL: Исправленный рабочий GUI
+-- // GHOST CLIENT - CS:GUI STYLE // --
 local player = game.Players.LocalPlayer
 local gui = Instance.new("ScreenGui")
+gui.Name = "GhostClient"
+gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 
--- Иконка (кнопка)
-local icon = Instance.new("TextButton")
+-- // НОТИФИКАЦИИ // --
+local function Notify(msg, duration)
+    duration = duration or 3
+    local notifyFrame = Instance.new("Frame")
+    notifyFrame.Size = UDim2.new(0, 280, 0, 40)
+    notifyFrame.Position = UDim2.new(1, 10, 0, 50)
+    notifyFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+    notifyFrame.BorderSizePixel = 0
+    notifyFrame.BackgroundTransparency = 0.15
+    notifyFrame.Parent = gui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = notifyFrame
+    
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, -10, 1, 0)
+    text.Position = UDim2.new(0, 5, 0, 0)
+    text.BackgroundTransparency = 1
+    text.Text = msg
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.Font = Enum.Font.Gotham
+    text.TextSize = 14
+    text.TextXAlignment = Enum.TextXAlignment.Left
+    text.Parent = notifyFrame
+    
+    notifyFrame.Position = UDim2.new(1, 10, 0, 50)
+    local tween = game:GetService("TweenService")
+    local goal = {Position = UDim2.new(1, -290, 0, 50)}
+    local fadeIn = tween:Create(notifyFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), goal)
+    fadeIn:Play()
+    
+    task.wait(duration)
+    local fadeOut = tween:Create(notifyFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Position = UDim2.new(1, 10, 0, 50)})
+    fadeOut:Play()
+    task.wait(0.3)
+    notifyFrame:Destroy()
+end
+
+-- // АНИМАЦИЯ ЗАГРУЗКИ "GHOST CLIENT" // --
+local function ShowSplash()
+    local splash = Instance.new("Frame")
+    splash.Size = UDim2.new(1, 0, 1, 0)
+    splash.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    splash.BackgroundTransparency = 0
+    splash.BorderSizePixel = 0
+    splash.Parent = gui
+    
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(0, 400, 0, 80)
+    text.Position = UDim2.new(0.5, -200, 0.5, -40)
+    text.BackgroundTransparency = 1
+    text.Text = "GHOST CLIENT"
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.Font = Enum.Font.GothamBold
+    text.TextSize = 48
+    text.TextScaled = true
+    text.Parent = splash
+    
+    local tween = game:GetService("TweenService")
+    tween:Create(splash, TweenInfo.new(1, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
+    task.wait(1.5)
+    splash:Destroy()
+end
+
+-- // КРУГЛАЯ ИКОНКА (слева сверху, чёрный фон, белый текст "ghost client") // --
+local icon = Instance.new("ImageButton")
 icon.Size = UDim2.new(0, 60, 0, 60)
-icon.Position = UDim2.new(0, 10, 0, 10)
-icon.BackgroundColor3 = Color3.fromRGB(255, 0, 100)
-icon.Text = "GHOST"
-icon.TextColor3 = Color3.fromRGB(255, 255, 255)
-icon.Font = Enum.Font.GothamBold
-icon.TextSize = 14
+icon.Position = UDim2.new(0, 15, 0, 15)
+icon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+icon.BackgroundTransparency = 0
+icon.AutoButtonColor = true
 icon.Parent = gui
 
--- Круглая форма иконки
 local iconCorner = Instance.new("UICorner")
 iconCorner.CornerRadius = UDim.new(1, 0)
 iconCorner.Parent = icon
 
--- Основное окно (изначально скрыто)
+local iconText = Instance.new("TextLabel")
+iconText.Size = UDim2.new(1, 0, 1, 0)
+iconText.BackgroundTransparency = 1
+iconText.Text = "ghost\nclient"
+iconText.TextColor3 = Color3.fromRGB(255, 255, 255)
+iconText.Font = Enum.Font.GothamBold
+iconText.TextSize = 14
+iconText.TextWrapped = true
+iconText.Parent = icon
+
+-- // CS:GUI ОСНОВНОЕ ОКНО // --
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 400, 0, 300)
-mainFrame.Position = UDim2.new(0.5, -200, 0.5, -150)
-mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
-mainFrame.BackgroundTransparency = 0
+mainFrame.Size = UDim2.new(0, 500, 0, 350)
+mainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+mainFrame.BackgroundTransparency = 0.05
+mainFrame.BorderSizePixel = 0
 mainFrame.Visible = false
 mainFrame.Parent = gui
 
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 10)
-mainCorner.Parent = mainFrame
+local frameCorner = Instance.new("UICorner")
+frameCorner.CornerRadius = UDim.new(0, 8)
+frameCorner.Parent = mainFrame
 
 -- Заголовок
 local titleBar = Instance.new("Frame")
 titleBar.Size = UDim2.new(1, 0, 0, 40)
-titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-titleBar.BorderSizePixels = 0
+titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+titleBar.BackgroundTransparency = 0.2
+titleBar.BorderSizePixel = 0
 titleBar.Parent = mainFrame
 
 local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 10)
+titleCorner.CornerRadius = UDim.new(0, 8)
 titleCorner.Parent = titleBar
 
-local titleText = Instance.new("TextLabel")
-titleText.Size = UDim2.new(1, -50, 1, 0)
-titleText.Position = UDim2.new(0, 15, 0, 0)
+local titleText = Instance.
+
+new("TextLabel")
+titleText.Size = UDim2.new(0.5, 0, 1, 0)
 titleText.BackgroundTransparency = 1
-titleText.Text = "GHOST CLIENT"
+titleText.Text = "CS:GUI | GHOST CLIENT"
 titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleText.TextXAlignment = Enum.TextXAlignment.Left
 titleText.Font = Enum.Font.GothamBold
 titleText.TextSize = 18
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Position = UDim2.new(0, 15, 0, 0)
 titleText.Parent = titleBar
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 40, 1, 0)
-closeBtn.Position = UDim2.new(1, -45, 0, 0)
-closeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
-closeBtn.Text = "X"
+closeBtn.Size = UDim2.new(0, 40, 0, 40)
+closeBtn.Position = UDim2.new(1, -40, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+closeBtn.Text = "✕"
 closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 16
-closeBtn.BorderSizePixels = 0
+closeBtn.TextSize = 20
 closeBtn.Parent = titleBar
 
 local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 5)
+closeCorner.CornerRadius = UDim.new(0, 8)
 closeCorner.Parent = closeBtn
 
-closeBtn.MouseButton1Click:Connect(function()
-    mainFrame.Visible = false
-end)
+-- // ВКЛАДКИ (а-ля CS:GO) // --
+local tabContainer = Instance.new("Frame")
+tabContainer.Size = UDim2.new(1, 0, 0, 40)
+tabContainer.Position = UDim2.new(0, 0, 0, 40)
+tabContainer.BackgroundTransparency = 1
+tabContainer.Parent = mainFrame
 
--- ESP кнопка
-local espBtn = Instance.new("TextButton")
-espBtn.Size = UDim2.new(0, 200, 0, 50)
-espBtn.Position = UDim2.new(0.5, -100, 0.5, -25)
-espBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 120)
-espBtn.Text = "ESP: OFF"
-espBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-espBtn.Font = Enum.Font.Gotham
-espBtn.TextSize = 18
-espBtn.BorderSizePixels = 0
-espBtn.Parent = mainFrame
+local tabs = {"mov", "com", "visual", "gui"}
+local activeTab = "mov"
 
-local espCorner = Instance.new("UICorner")
-espCorner.CornerRadius = UDim.new(0, 8)
-espCorner.Parent = espBtn
+local tabButtons = {}
+local contentFrames = {}
 
-local espEnabled = false
-local espObjects = {}
-
-local function clearESP()
-    for _, obj in pairs(espObjects) do
-        pcall(function() obj:Destroy() end)
-    end
-    espObjects = {}
+for i, tabName in ipairs(tabs) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.25, 0, 1, 0)
+    btn.Position = UDim2.new((i-1)*0.25, 0, 0, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    btn.BackgroundTransparency = 0
+    btn.Text = string.upper(tabName)
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 14
+    btn.Parent = tabContainer
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 4)
+    btnCorner.Parent = btn
+    
+    tabButtons[tabName] = btn
+    
+    local content = Instance.new("Frame")
+    content.Size = UDim2.new(1, 0, 1, -80)
+    content.Position = UDim2.new(0, 0, 0, 80)
+    content.BackgroundTransparency = 1
+    content.Visible = (i == 1)
+    content.Parent = mainFrame
+    contentFrames[tabName] = content
 end
 
-local function addESP(char)
-    if not espEnabled then return end
-    if char == player.Character then return end
-    if not char:FindFirstChild("Humanoid") then return end
-    
-    local box = Instance.new("BoxHandleAdornment")
-    box.Size = Vector3.new(3, 5, 3)
-    box.Adornee = char
-    box.Color3 = Color3.fromRGB(255, 70, 120)
-    box.AlwaysOnTop = true
-    box.ZIndex = 10
-    box.Parent = char
-    table.insert(espObjects, box)
+-- // ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ ВКЛАДОК // --
+local function SwitchTab(tabName)
+    activeTab = tabName
+    for t, btn in pairs(tabButtons) do
+        btn.BackgroundColor3 = (t == tabName) and Color3.fromRGB(80, 80, 90) or Color3.fromRGB(35, 35, 40)
+        btn.TextColor3 = (t == tabName) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
+    end
+    for t, frame in pairs(contentFrames) do
+        frame.Visible = (t == tabName)
+    end
 end
 
-espBtn.MouseButton1Click:Connect(function()
-    espEnabled = not espEnabled
-    if espEnabled then
-        espBtn.BackgroundColor3 = Color3.fromRGB(80, 220, 100)
-        espBtn.Text = "ESP: ON"
-        for _, child in pairs(workspace:GetChildren()) do
-            addESP(child)
-        end
-    else
-        espBtn.BackgroundColor3 = Color3.fromRGB(255, 70, 120)
-        espBtn.Text = "ESP: OFF"
-        clearESP()
-    end
+for tabName, btn in pairs(tabButtons) do
+    btn.MouseButton1Click:Connect(function()
+        SwitchTab(tabName)
+    end)
+end
+
+-- // ВКЛАДКА MOV (с Magic Fly) // --
+local movContent = contentFrames["mov"]
+local flyEnabled = false
+local flyConnection = nil
+
+local flyBtn = Instance.new("TextButton")
+flyBtn.Size = UDim2.new(0.4, 0, 0, 40)
+flyBtn.Position = UDim2.new(0.05, 0, 0.1, 0)
+flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+flyBtn.Text = "MAGIC FLY: OFF"
+flyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+flyBtn.Font = Enum.Font.Gotham
+flyBtn.TextSize = 16
+flyBtn.Parent = movContent
+
+local flyCorner = Instance.new("UICorner")
+flyCorner.CornerRadius = UDim.new(0, 6)
+flyCorner.Parent = flyBtn
+
+local function StartFly()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    local bodyVel = Instance.new("BodyVelocity")
+    bodyVel.MaxForce = Vector3.new(10000, 10000, 10000)
+    bodyVel.Velocity = Vector3.new(0, 0, 0)
+    bodyVel.Parent = hrp
+    
+    local flyConnection
+    flyConnection = game:GetService("RunService").RenderStepped:Connect(function()
+        if hrp and hrp.Parent then
+            local moveDir = Vector3.new()
+            local camera = workspace.CurrentCamera
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camera.CFrame.LookVector end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camera.CFrame.LookVector end
+
+if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camera.CFrame.RightVector end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camera.CFrame.RightVector end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir + Vector3.new(0, -1, 0) end
+            
+            if moveDir.Magnitude > 0 then
+                moveDir = moveDir.Unit * 50
+            end
+            bodyVel.Velocity = moveDir
+        end
+    end)
+    return bodyVel, flyConnection
+end
+
+flyBtn.MouseButton1Click:Connect(function()
+    flyEnabled = not flyEnabled
+    if flyEnabled then
+        local char = player.Character or player.CharacterAdded:Wait()
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        local bodyVel, conn = StartFly()
+        flyBtn.Text = "MAGIC FLY: ON"
+        flyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+        Notify("✈ Magic Fly включён!", 2)
+        
+        player.CharacterAdded:Connect(function(newChar)
+            if flyEnabled then
+                task.wait(0.5)
+                local newHrp = newChar:WaitForChild("HumanoidRootPart")
+                local newVel = Instance.new("BodyVelocity")
+                newVel.MaxForce = Vector3.new(10000, 10000, 10000)
+                newVel.Parent = newHrp
+            end
+        end)
+    else
+        local char = player.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                for _, v in pairs(hrp:GetChildren()) do
+                    if v:IsA("BodyVelocity") then v:Destroy() end
+                end
+            end
+        end
+        flyBtn.Text = "MAGIC FLY: OFF"
+        flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+        Notify("✈ Magic Fly выключен", 2)
+    end
 end)
 
-workspace.ChildAdded:Connect(function(child)
-    if espEnabled then
-        addESP(child)
-    end
+-- // ВКЛАДКА GUI (выбор стиля: Panel или CS) // --
+local guiContent = contentFrames["gui"]
+local selectedStyle = "cs"
+
+local styleLabel = Instance.new("TextLabel")
+styleLabel.Size = UDim2.new(0.9, 0, 0, 30)
+styleLabel.Position = UDim2.new(0.05, 0, 0.05, 0)
+styleLabel.BackgroundTransparency = 1
+styleLabel.Text = "Стиль GUI:"
+styleLabel.TextColor3 = Color3.fromRGB(255,255,255)
+styleLabel.Font = Enum.Font.Gotham
+styleLabel.TextSize = 18
+styleLabel.TextXAlignment = Enum.TextXAlignment.Left
+styleLabel.Parent = guiContent
+
+local panelBtn = Instance.new("TextButton")
+panelBtn.Size = UDim2.new(0.4, 0, 0, 40)
+panelBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
+panelBtn.BackgroundColor3 = Color3.fromRGB(50,50,55)
+panelBtn.Text = "PANEL"
+panelBtn.TextColor3 = Color3.fromRGB(255,255,255)
+panelBtn.Font = Enum.Font.Gotham
+panelBtn.TextSize = 16
+panelBtn.Parent = guiContent
+
+local csBtn = Instance.new("TextButton")
+csBtn.Size = UDim2.new(0.4, 0, 0, 40)
+csBtn.Position = UDim2.new(0.55, 0, 0.2, 0)
+csBtn.BackgroundColor3 = Color3.fromRGB(80,80,90)
+csBtn.Text = "CS"
+csBtn.TextColor3 = Color3.fromRGB(255,255,255)
+csBtn.Font = Enum.Font.Gotham
+csBtn.TextSize = 16
+csBtn.Parent = guiContent
+
+local applyBtn = Instance.new("TextButton")
+applyBtn.Size = UDim2.new(0.4, 0, 0, 40)
+applyBtn.Position = UDim2.new(0.3, 0, 0.5, 0)
+applyBtn.BackgroundColor3 = Color3.fromRGB(0,120,200)
+applyBtn.Text = "ПРИМЕНИТЬ"
+applyBtn.TextColor3 = Color3.fromRGB(255,255,255)
+applyBtn.Font = Enum.Font.GothamBold
+applyBtn.TextSize = 16
+applyBtn.Parent = guiContent
+
+applyBtn.MouseButton1Click:Connect(function()
+    Notify("Выбран стиль: " .. string.upper(selectedStyle) .. " (перезайдите для полного эффекта)", 3)
 end)
 
--- Открытие/закрытие по клику на иконку
+panelBtn.MouseButton1Click:Connect(function()
+    selectedStyle = "panel"
+    panelBtn.BackgroundColor3 = Color3.fromRGB(80,80,90)
+    csBtn.BackgroundColor3 = Color3.fromRGB(50,50,55)
+end)
+
+csBtn.MouseButton1Click:Connect(function()
+    selectedStyle = "cs"
+    csBtn.BackgroundColor3 = Color3.fromRGB(80,80,90)
+    panelBtn.BackgroundColor3 = Color3.fromRGB(50,50,55)
+
+end)
+
+-- // ДОБАВИМ ПЛАШКИ В ДРУГИЕ ВКЛАДКИ ДЛЯ КРАСОТЫ // --
+local comContent = contentFrames["com"]
+local comLabel = Instance.new("TextLabel")
+comLabel.Size = UDim2.new(0.9,0,0,30)
+comLabel.Position = UDim2.new(0.05,0,0.05,0)
+comLabel.BackgroundTransparency = 1
+comLabel.Text = "Combat functions (soon)"
+comLabel.TextColor3 = Color3.fromRGB(200,200,200)
+comLabel.Font = Enum.Font.Gotham
+comLabel.TextSize = 16
+comLabel.Parent = comContent
+
+local visualContent = contentFrames["visual"]
+local visualLabel = Instance.new("TextLabel")
+visualLabel.Size = UDim2.new(0.9,0,0,30)
+visualLabel.Position = UDim2.new(0.05,0,0.05,0)
+visualLabel.BackgroundTransparency = 1
+visualLabel.Text = "Visual functions (soon)"
+visualLabel.TextColor3 = Color3.fromRGB(200,200,200)
+visualLabel.Font = Enum.Font.Gotham
+visualLabel.TextSize = 16
+visualLabel.Parent = visualContent
+
+-- // ОТКРЫТИЕ/ЗАКРЫТИЕ GUI // --
+local menuOpen = false
 icon.MouseButton1Click:Connect(function()
-    mainFrame.
-
-Visible = not mainFrame.Visible
+    menuOpen = not menuOpen
+    mainFrame.Visible = menuOpen
 end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    menuOpen = false
+    mainFrame.Visible = false
+end)
+
+-- // ЗАПУСК АНИМАЦИИ ЗАГРУЗКИ И НОТИФИКАЦИЯ // --
+ShowSplash()
+task.wait(0.5)
+Notify("Скрипт Ghost Client загружен!", 2)
