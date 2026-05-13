@@ -1,21 +1,17 @@
 --[[
-    ═════════════════════════════════════════════════════════════════════════════════════
-    XCLIENT v1.3.0 - PROFESSIONELLES HUB MIT CS:GO STIL
-    Kompatibel mit: Delta, Xeno, Fluxus, Codex
-    Система магического полета с реалистичной физикой
-    Версия: 1.3.0
-    Автор: Магический полет
-    ═════════════════════════════════════════════════════════════════════════════════════
+    ═════════════════════════════════════════════════════════════════
+    XCLIENT v1.5.0 - ПОЛНОСТЬЮ ОБЪЕДИНЁННАЯ ВЕРСИЯ
+    Включает: Flight System + Movement Modes + Damage Fly System
+    ═════════════════════════════════════════════════════════════════
 --]]
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 -- ПРОВЕРКА СОВМЕСТИМОСТИ И ИНИЦИАЛИЗАЦИЯ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local isExecutor = false
 local executorName = "Unknown"
 
--- Проверка для каждого executor
 if _G.delta or (game:FindFirstChild("delta") and game.delta:FindFirstChild("getIdentity")) then
     executorName = "Delta"
     isExecutor = true
@@ -42,15 +38,15 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 -- КОНСТАНТЫ И КОНФИГУРАЦИЯ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local FLIGHT_SPEED = _G.FlightSpeed or 16
 local HOVER_AMPLITUDE = 0.1
 local LERP_SPEED = 0.15
 
--- Параметры физики
+-- Параметры физики полёта
 local MICRO_DROP_CHANCE = 0.05
 local MICRO_DROP_FORCE = 0.3
 local MICRO_STEP_INTENSITY = 0.08
@@ -61,10 +57,61 @@ local COLOR_BG = Color3.fromRGB(25, 25, 30)
 local COLOR_ACCENT = Color3.fromRGB(100, 200, 255)
 local COLOR_TEXT = Color3.fromRGB(220, 220, 220)
 local COLOR_HOVER = Color3.fromRGB(50, 50, 60)
+local COLOR_SUCCESS = Color3.fromRGB(100, 255, 100)
+local COLOR_ERROR = Color3.fromRGB(255, 100, 100)
+local COLOR_WARNING = Color3.fromRGB(255, 200, 100)
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
+-- НАСТРОЙКИ РЕЖИМОВ ДВИЖЕНИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local movementModes = {
+    collision = {
+        enabled = false,
+        speed = 50,
+        radius = 30,
+        name = "Collision",
+        description = "Boost от игрока"
+    },
+    miniJump = {
+        enabled = false,
+        speed = 30,
+        frequency = 0.5,
+        intensity = 15,
+        name = "MiniJump",
+        description = "Мини прыжки для буста"
+    },
+    selfPush = {
+        enabled = false,
+        speed = 60,
+        gloveType = "Пощечина",
+        active = false,
+        name = "Self Push",
+        description = "Удар перчаткой по себе"
+    }
+}
+
+-- ═════════════════════════════════════════════════════════════════
+-- DAMAGE FLY КОНФИГУРАЦИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local damageFlyConfig = {
+    enabled = false,
+    active = false,
+    maxDuration = 10,
+    currentDuration = 0,
+    isCharging = false,
+    chargeRate = 0.5,
+    drainRate = 0.1,
+    speed = 50,
+    minDamageToActivate = 5,
+    lastDamageTime = 0,
+    damageTimeout = 0.5
+}
+
+-- ═════════════════════════════════════════════════════════════════
 -- ИНИЦИАЛИЗАЦИЯ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local localPlayer = Players.LocalPlayer
 local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
@@ -76,21 +123,56 @@ local currentVelocity = Vector3.new(0, 0, 0)
 local hoverTime = 0
 local spaceKeyPressed = false
 
--- Переменные для эффектов
 local randomizationTimer = 0
 local currentRandomX = 0
 local currentRandomY = 0
 local currentRandomZ = 0
 local microDropOffset = 0
 
--- Переменные GUI
 local guiMode = "CS"
 local currentTab = "MOV"
 local connections = {}
+local lastHealth = humanoid.Health
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ ПОИСКА ПРЕДМЕТОВ
+-- ═════════════════════════════════════════════════════════════════
+
+local function findGloveInInventory(gloveName)
+    local backpack = localPlayer:FindFirstChild("Backpack")
+    if not backpack then return nil end
+    
+    for _, item in ipairs(backpack:GetChildren()) do
+        if item.Name == gloveName or item:FindFirstChild("ClassName") then
+            if item.Name:find("Пощечина") or item.Name == gloveName then
+                return item
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function getNearestPlayer(range)
+    local nearest = nil
+    local nearestDistance = range or 100
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local distance = (player.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+            if distance < nearestDistance then
+                nearest = player
+                nearestDistance = distance
+            end
+        end
+    end
+    
+    return nearest
+end
+
+-- ═════════════════════════════════════════════════════════════════
 -- ФУНКЦИЯ ЗАГРУЗКИ С АНИМАЦИЕЙ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local function showLoadingScreen()
     local loadingGui = Instance.new("ScreenGui")
@@ -137,12 +219,10 @@ local function showLoadingScreen()
     loadingBar.BorderSizePixel = 0
     loadingBar.Parent = bg
 
-    -- Анимация прогресс-бара
     local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.In)
     local tween = TweenService:Create(loadingBar, tweenInfo, {Size = UDim2.new(0, 300, 0, 4)})
     tween:Play()
 
-    -- Исчезание
     tween.Completed:Connect(function()
         wait(0.3)
         local fadeOut = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -154,11 +234,11 @@ local function showLoadingScreen()
     end)
 end
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 -- ФУНКЦИЯ УВЕДОМЛЕНИЙ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
-local function showNotification(text)
+local function showNotification(text, color)
     local playerGui = localPlayer:WaitForChild("PlayerGui")
     
     local notificationGui = Instance.new("ScreenGui")
@@ -175,12 +255,11 @@ local function showNotification(text)
     notification.BorderSizePixel = 0
     notification.Parent = notificationGui
 
-    -- Граница слева цветная
     local border = Instance.new("Frame")
     border.Name = "Border"
     border.Size = UDim2.new(0, 4, 1, 0)
     border.Position = UDim2.new(0, 0, 0, 0)
-    border.BackgroundColor3 = COLOR_ACCENT
+    border.BackgroundColor3 = color or COLOR_ACCENT
     border.BorderSizePixel = 0
     border.Parent = notification
 
@@ -197,13 +276,11 @@ local function showNotification(text)
     label.TextYAlignment = Enum.TextYAlignment.Center
     label.Parent = notification
 
-    -- Анимация появления
     notification.Position = UDim2.new(1, 0, 1, -80)
     local slideIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     local slideInTween = TweenService:Create(notification, slideIn, {Position = UDim2.new(1, -320, 1, -80)})
     slideInTween:Play()
 
-    -- Автоудаление через 3 сек
     wait(3)
     local slideOut = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
     local slideOutTween = TweenService:Create(notification, slideOut, {Position = UDim2.new(1, 0, 1, -80)})
@@ -213,9 +290,9 @@ local function showNotification(text)
     end)
 end
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 -- ФУНКЦИИ ФИЗИКИ ПОЛЕТА
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local function shouldMicroDrop()
     return math.random() < MICRO_DROP_CHANCE
@@ -267,9 +344,9 @@ local function createFlightEffect()
     return attachment
 end
 
--- ═════════════════════════════════════════════════════════════════════════════════════
--- ФУНКЦИИ УПРАВЛЕНИЯ ПОЛЕТОМ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ УПРАВЛЕНИЯ ПОЛЕТОМ (ОСНОВНОЙ)
+-- ═════════════════════════════════════════════════════════════════
 
 local function activateFlight()
     if isFlying then return end
@@ -351,7 +428,7 @@ local function activateFlight()
     end)
     
     table.insert(connections, heartbeatConnection)
-    showNotification("✓ Полет включен!")
+    showNotification("✓ Полет включен!", COLOR_SUCCESS)
 end
 
 local function deactivateFlight()
@@ -367,12 +444,495 @@ local function deactivateFlight()
     if effect then effect:Destroy() end
     
     currentVelocity = Vector3.new(0, 0, 0)
-    showNotification("✓ Полет отключен!")
+    showNotification("✓ Полет отключен!", COLOR_ERROR)
 end
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ РЕЖИМОВ ДВИЖЕНИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local function activateCollision()
+    if movementModes.collision.enabled then
+        movementModes.collision.enabled = false
+        showNotification("✗ Collision отключена", COLOR_ERROR)
+        return
+    end
+    
+    movementModes.collision.enabled = true
+    showNotification("✓ Collision включена", COLOR_SUCCESS)
+    
+    local heartbeat
+    heartbeat = RunService.Heartbeat:Connect(function(deltaTime)
+        if not movementModes.collision.enabled or not character.Parent or humanoid.Health <= 0 then
+            heartbeat:Disconnect()
+            return
+        end
+        
+        local moveDirection = humanoid.MoveDirection
+        if moveDirection.Magnitude > 0 then
+            local boostDirection = moveDirection.Unit
+            local boostVelocity = boostDirection * movementModes.collision.speed
+            rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + boostVelocity * deltaTime
+        end
+    end)
+    
+    table.insert(connections, heartbeat)
+end
+
+local function activateMiniJump()
+    if movementModes.miniJump.enabled then
+        movementModes.miniJump.enabled = false
+        showNotification("✗ MiniJump отключена", COLOR_ERROR)
+        return
+    end
+    
+    movementModes.miniJump.enabled = true
+    showNotification("✓ MiniJump включена", COLOR_SUCCESS)
+    
+    local jumpTimer = 0
+    local heartbeat
+    heartbeat = RunService.Heartbeat:Connect(function(deltaTime)
+        if not movementModes.miniJump.enabled or not character.Parent or humanoid.Health <= 0 then
+            heartbeat:Disconnect()
+            return
+        end
+        
+        jumpTimer = jumpTimer + deltaTime
+        if jumpTimer >= movementModes.miniJump.frequency then
+            jumpTimer = 0
+            
+            local jumpForce = Vector3.new(0, movementModes.miniJump.intensity, 0)
+            rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + jumpForce
+        end
+    end)
+    
+    table.insert(connections, heartbeat)
+end
+
+local function activateSelfPush()
+    if movementModes.selfPush.enabled then
+        movementModes.selfPush.enabled = false
+        showNotification("✗ Self Push отключена", COLOR_ERROR)
+        return
+    end
+    
+    local glove = findGloveInInventory("Пощечина")
+    if not glove then
+        showNotification("✗ Перчатка не найдена в инвентаре!", COLOR_ERROR)
+        return
+    end
+    
+    movementModes.selfPush.enabled = true
+    showNotification("✓ Self Push включена", COLOR_SUCCESS)
+    
+    local pushTimer = 0
+    local heartbeat
+    heartbeat = RunService.Heartbeat:Connect(function(deltaTime)
+        if not movementModes.selfPush.enabled or not character.Parent or humanoid.Health <= 0 then
+            heartbeat:Disconnect()
+            movementModes.selfPush.enabled = false
+            return
+        end
+        
+        pushTimer = pushTimer + deltaTime
+        
+        if pushTimer >= 0.5 then
+            pushTimer = 0
+            
+            local pushDirection = rootPart.CFrame.LookVector
+            local pushForce = pushDirection * movementModes.selfPush.speed
+            
+            rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + pushForce
+            
+            rootPart.RotVelocity = rootPart.RotVelocity + Vector3.new(
+                math.random(-5, 5),
+                math.random(-5, 5),
+                math.random(-5, 5)
+            )
+        end
+    end)
+    
+    table.insert(connections, heartbeat)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- DAMAGE FLY HUD
+-- ═════════════════════════════════════════════════════════════════
+
+local function createDamageFlyHUD()
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    
+    local existingHUD = playerGui:FindFirstChild("DamageFlyHUD")
+    if existingHUD then
+        existingHUD:Destroy()
+    end
+
+    local hudGui = Instance.new("ScreenGui")
+    hudGui.Name = "DamageFlyHUD"
+    hudGui.ResetOnSpawn = false
+    hudGui.DisplayOrder = 9997
+    hudGui.Parent = playerGui
+
+    local hudContainer = Instance.new("Frame")
+    hudContainer.Name = "HUDContainer"
+    hudContainer.Size = UDim2.new(0, 80, 0, 80)
+    hudContainer.Position = UDim2.new(0.5, -40, 1, -100)
+    hudContainer.BackgroundTransparency = 1
+    hudContainer.BorderSizePixel = 0
+    hudContainer.Parent = hudGui
+
+    local outerCircle = Instance.new("Frame")
+    outerCircle.Name = "OuterCircle"
+    outerCircle.Size = UDim2.new(1, 0, 1, 0)
+    outerCircle.BackgroundColor3 = COLOR_ACCENT
+    outerCircle.BorderSizePixel = 0
+    outerCircle.Parent = hudContainer
+
+    local outerCorner = Instance.new("UICorner")
+    outerCorner.CornerRadius = UDim.new(1, 0)
+    outerCorner.Parent = outerCircle
+
+    local outerStroke = Instance.new("UIStroke")
+    outerStroke.Color = COLOR_ACCENT
+    outerStroke.Thickness = 3
+    outerStroke.Transparency = 0.3
+    outerStroke.Parent = outerCircle
+
+    local innerCircle = Instance.new("Frame")
+    innerCircle.Name = "InnerCircle"
+    innerCircle.Size = UDim2.new(0.7, 0, 0.7, 0)
+    innerCircle.Position = UDim2.new(0.15, 0, 0.15, 0)
+    innerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    innerCircle.BorderSizePixel = 0
+    innerCircle.Parent = hudContainer
+
+    local innerCorner = Instance.new("UICorner")
+    innerCorner.CornerRadius = UDim.new(1, 0)
+    innerCorner.Parent = innerCircle
+
+    local innerStroke = Instance.new("UIStroke")
+    innerStroke.Color = COLOR_ACCENT
+    innerStroke.Thickness = 2
+    innerStroke.Transparency = 0.5
+    innerStroke.Parent = innerCircle
+
+    local progressRing = Instance.new("Frame")
+    progressRing.Name = "ProgressRing"
+    progressRing.Size = UDim2.new(0.85, 0, 0.85, 0)
+    progressRing.Position = UDim2.new(0.075, 0, 0.075, 0)
+    progressRing.BackgroundTransparency = 1
+    progressRing.BorderSizePixel = 0
+    progressRing.Parent = hudContainer
+
+    local ringStroke = Instance.new("UIStroke")
+    ringStroke.Color = COLOR_ACCENT
+    ringStroke.Thickness = 2
+    ringStroke.Transparency = 0.2
+    ringStroke.Parent = progressRing
+
+    local percentText = Instance.new("TextLabel")
+    percentText.Name = "PercentText"
+    percentText.Size = UDim2.new(1, 0, 1, 0)
+    percentText.BackgroundTransparency = 1
+    percentText.Text = "0%"
+    percentText.TextColor3 = COLOR_ACCENT
+    percentText.TextSize = 24
+    percentText.Font = Enum.Font.GothamBold
+    percentText.Parent = innerCircle
+
+    local statusText = Instance.new("TextLabel")
+    statusText.Name = "StatusText"
+    statusText.Size = UDim2.new(2, 0, 0, 30)
+    statusText.Position = UDim2.new(-0.5, 0, 1, 10)
+    statusText.BackgroundTransparency = 1
+    statusText.Text = "Ready"
+    statusText.TextColor3 = COLOR_SUCCESS
+    statusText.TextSize = 12
+    statusText.Font = Enum.Font.Gotham
+    statusText.Parent = hudContainer
+
+    return {
+        container = hudContainer,
+        outerCircle = outerCircle,
+        innerCircle = innerCircle,
+        progressRing = progressRing,
+        percentText = percentText,
+        statusText = statusText,
+        ringStroke = ringStroke,
+        outerStroke = outerStroke
+    }
+end
+
+local hudElements = createDamageFlyHUD()
+
+local function updateDamageFlyHUD()
+    local percent = math.floor((damageFlyConfig.currentDuration / damageFlyConfig.maxDuration) * 100)
+    percent = math.max(0, math.min(100, percent))
+
+    hudElements.percentText.Text = percent .. "%"
+
+    local displayColor = COLOR_ACCENT
+    local statusLabel = "Ready"
+
+    if damageFlyConfig.active then
+        displayColor = COLOR_SUCCESS
+        statusLabel = "FLYING"
+    elseif damageFlyConfig.isCharging then
+        displayColor = COLOR_WARNING
+        statusLabel = "Charging..."
+    elseif percent <= 0 then
+        displayColor = COLOR_ERROR
+        statusLabel = "Depleted!"
+    elseif percent < 30 then
+        displayColor = COLOR_WARNING
+        statusLabel = "Low Power"
+    end
+
+    hudElements.percentText.TextColor3 = displayColor
+    hudElements.statusText.TextColor3 = displayColor
+    hudElements.statusText.Text = statusLabel
+    hudElements.outerStroke.Color = displayColor
+    hudElements.innerCircle.BorderStroke.Color = displayColor
+
+    if damageFlyConfig.active then
+        local newSize = 80 + math.sin(tick() * 5) * 3
+        hudElements.container.Size = UDim2.new(0, newSize, 0, newSize)
+    else
+        hudElements.container.Size = UDim2.new(0, 80, 0, 80)
+    end
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- DAMAGE FLY ОСНОВНЫЕ ФУНКЦИИ
+-- ═════════════════════════════════════════════════════════════════
+
+local function activateDamageFly()
+    if damageFlyConfig.currentDuration < damageFlyConfig.minDamageToActivate then
+        showNotification("✗ Недостаточно энергии!", COLOR_ERROR)
+        return
+    end
+    
+    if damageFlyConfig.active then
+        deactivateDamageFly()
+        return
+    end
+
+    damageFlyConfig.active = true
+    showNotification("✓ Damage Fly активирован!", COLOR_SUCCESS)
+
+    local oldVelocity = rootPart:FindFirstChild("DFlyVelocity")
+    if oldVelocity then oldVelocity:Destroy() end
+    
+    local oldGyro = rootPart:FindFirstChild("DFlyGyro")
+    if oldGyro then oldGyro:Destroy() end
+
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Name = "DFlyVelocity"
+    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bodyVelocity.P = 1250
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.Parent = rootPart
+
+    local bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.Name = "DFlyGyro"
+    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bodyGyro.P = 3000
+    bodyGyro.D = 500
+    bodyGyro.Parent = rootPart
+
+    local heartbeatConnection
+    heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not damageFlyConfig.active or not character.Parent or humanoid.Health <= 0 then
+            heartbeatConnection:Disconnect()
+            if bodyVelocity and bodyVelocity.Parent then bodyVelocity:Destroy() end
+            if bodyGyro and bodyGyro.Parent then bodyGyro:Destroy() end
+            damageFlyConfig.active = false
+            return
+        end
+
+        damageFlyConfig.currentDuration = damageFlyConfig.currentDuration - (damageFlyConfig.drainRate * deltaTime)
+        
+        if damageFlyConfig.currentDuration <= 0 then
+            damageFlyConfig.currentDuration = 0
+            deactivateDamageFly()
+            showNotification("✗ Энергия исчерпана!", COLOR_ERROR)
+            return
+        end
+
+        local moveDirection = humanoid.MoveDirection
+        local isSprinting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or 
+                           UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+        
+        local currentSpeed = damageFlyConfig.speed * (isSprinting and 1.5 or 1)
+        local spacePressed = UserInputService:IsKeyDown(Enum.KeyCode.Space)
+        
+        local flightDirection = moveDirection
+        if flightDirection.Magnitude > 0 then
+            flightDirection = flightDirection.Unit
+        end
+        
+        local targetVelocity = flightDirection * currentSpeed
+        targetVelocity = targetVelocity + Vector3.new(0, spacePressed and 10 or -5, 0)
+        
+        currentVelocity = currentVelocity:Lerp(targetVelocity, 0.15)
+        
+        bodyVelocity.Velocity = currentVelocity
+        rootPart.AssemblyLinearVelocity = currentVelocity
+        bodyGyro.CFrame = rootPart.CFrame
+    end)
+    
+    table.insert(connections, heartbeatConnection)
+end
+
+local function deactivateDamageFly()
+    damageFlyConfig.active = false
+    
+    local velocity = rootPart:FindFirstChild("DFlyVelocity")
+    if velocity then velocity:Destroy() end
+    
+    local gyro = rootPart:FindFirstChild("DFlyGyro")
+    if gyro then gyro:Destroy() end
+    
+    currentVelocity = Vector3.new(0, 0, 0)
+    showNotification("✓ Damage Fly отключен!", COLOR_ERROR)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ОБРАБОТКА УРОНА ДЛЯ DAMAGE FLY
+-- ═════════════════════════════════════════════════════════════════
+
+local damageTakenConnection = humanoid.ChildAdded:Connect(function(child)
+    if child.Name == "BodyVelocity" or child.Name == "BodyGyro" then return end
+    
+    local currentHealth = humanoid.Health
+    local damageAmount = lastHealth - currentHealth
+    
+    if damageAmount > 0 then
+        lastHealth = currentHealth
+        damageFlyConfig.lastDamageTime = tick()
+        
+        local maxHealth = humanoid.MaxHealth
+        local damagePercent = (damageAmount / maxHealth) * 100
+        
+        local newDuration = damageFlyConfig.currentDuration + (damagePercent * damageFlyConfig.maxDuration / 100)
+        damageFlyConfig.currentDuration = math.min(newDuration, damageFlyConfig.maxDuration)
+        
+        showNotification("💥 +энергия! " .. math.floor(damagePercent) .. "%", COLOR_SUCCESS)
+    end
+end)
+
+table.insert(connections, damageTakenConnection)
+
+local healthChangedConnection = humanoid.HealthChanged:Connect(function(newHealth)
+    if newHealth < lastHealth then
+        local damageAmount = lastHealth - newHealth
+        lastHealth = newHealth
+        
+        if not damageFlyConfig.isCharging then
+            damageFlyConfig.isCharging = false
+        end
+    end
+end)
+
+table.insert(connections, healthChangedConnection)
+
+-- ═════════════════════════════════════════════════════════════════
+-- СЛАЙДЕР УПРАВЛЕНИЯ СКОРОСТЬЮ
+-- ═════════════════════════════════════════════════════════════════
+
+local function createSpeedSlider(parent, modeKey, initialValue, minValue, maxValue)
+    local sliderContainer = Instance.new("Frame")
+    sliderContainer.Name = modeKey .. "SliderContainer"
+    sliderContainer.Size = UDim2.new(1, -20, 0, 40)
+    sliderContainer.BackgroundTransparency = 1
+    sliderContainer.Parent = parent
+
+    local sliderLabel = Instance.new("TextLabel")
+    sliderLabel.Name = "SliderLabel"
+    sliderLabel.Size = UDim2.new(0, 100, 0, 20)
+    sliderLabel.Position = UDim2.new(0, 0, 0, 0)
+    sliderLabel.BackgroundTransparency = 1
+    sliderLabel.Text = "Speed: " .. tostring(math.floor(initialValue))
+    sliderLabel.TextColor3 = COLOR_ACCENT
+    sliderLabel.TextSize = 12
+    sliderLabel.Font = Enum.Font.Gotham
+    sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    sliderLabel.Parent = sliderContainer
+
+    local slider = Instance.new("Frame")
+    slider.Name = "Slider"
+    slider.Size = UDim2.new(1, -120, 0, 6)
+    slider.Position = UDim2.new(0, 110, 0, 7)
+    slider.BackgroundColor3 = COLOR_HOVER
+    slider.BorderSizePixel = 0
+    slider.Parent = sliderContainer
+
+    local sliderCorner = Instance.new("UICorner")
+    sliderCorner.CornerRadius = UDim.new(0, 3)
+    sliderCorner.Parent = slider
+
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Name = "Fill"
+    sliderFill.Size = UDim2.new((initialValue - minValue) / (maxValue - minValue), 0, 1, 0)
+    sliderFill.BackgroundColor3 = COLOR_ACCENT
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = slider
+
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 3)
+    fillCorner.Parent = sliderFill
+
+    local thumb = Instance.new("ImageButton")
+    thumb.Name = "Thumb"
+    thumb.Size = UDim2.new(0, 16, 0, 16)
+    thumb.Position = UDim2.new((initialValue - minValue) / (maxValue - minValue), -8, 0.5, -8)
+    thumb.BackgroundColor3 = COLOR_ACCENT
+    thumb.BorderSizePixel = 0
+    thumb.Image = ""
+    thumb.Parent = slider
+
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(1, 0)
+    thumbCorner.Parent = thumb
+
+    local dragging = false
+    
+    thumb.MouseButton1Down:Connect(function()
+        dragging = true
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input, gameProcessed)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input, gameProcessed)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouseLocation = UserInputService:GetMouseLocation()
+            local sliderAbsoluteSize = slider.AbsoluteSize.X
+            local sliderAbsolutePosition = slider.AbsolutePosition.X
+            
+            local relativePosition = mouseLocation.X - sliderAbsolutePosition
+            local percentage = math.max(0, math.min(1, relativePosition / sliderAbsoluteSize))
+            
+            local newValue = minValue + (percentage * (maxValue - minValue))
+            newValue = math.floor(newValue)
+            
+            movementModes[modeKey].speed = newValue
+            
+            sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+            thumb.Position = UDim2.new(percentage, -8, 0.5, -8)
+            sliderLabel.Text = "Speed: " .. tostring(newValue)
+        end
+    end)
+    
+    return sliderContainer
+end
+
+-- ═════════════════════════════════════════════════════════════════
 -- СОЗДАНИЕ CS:GO СТИЛЯ GUI
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local function createCSGUI()
     local playerGui = localPlayer:WaitForChild("PlayerGui")
@@ -388,10 +948,7 @@ local function createCSGUI()
     screenGui.DisplayOrder = 9999
     screenGui.Parent = playerGui
 
-    -- ────────────────────────────────────────────────────────────────────────────────
     -- ИКОНКА СЛЕВА СВЕРХУ
-    -- ────────────────────────────────────────────────────────────────────────────────
-
     local logoFrame = Instance.new("Frame")
     logoFrame.Name = "Logo"
     logoFrame.Size = UDim2.new(0, 120, 0, 120)
@@ -419,14 +976,11 @@ local function createCSGUI()
     logoText.Font = Enum.Font.GothamBold
     logoText.Parent = logoFrame
 
-    -- ────────────────────────────────────────────────────────────────────────────────
     -- ГЛАВНАЯ ПАНЕЛЬ
-    -- ────────────────────────────────────────────────────────────────────────────────
-
     local mainPanel = Instance.new("Frame")
     mainPanel.Name = "MainPanel"
-    mainPanel.Size = UDim2.new(0, 400, 0, 500)
-    mainPanel.Position = UDim2.new(1, -420, 0, 15)
+    mainPanel.Size = UDim2.new(0, 450, 0, 600)
+    mainPanel.Position = UDim2.new(1, -470, 0, 15)
     mainPanel.BackgroundColor3 = COLOR_BG
     mainPanel.BorderSizePixel = 0
     mainPanel.Parent = screenGui
@@ -441,10 +995,7 @@ local function createCSGUI()
     panelStroke.Transparency = 0.7
     panelStroke.Parent = mainPanel
 
-    -- ────────────────────────────────────────────────────────────────────────────────
     -- ВКЛАДКИ
-    -- ────────────────────────────────────────────────────────────────────────────────
-
     local tabsContainer = Instance.new("Frame")
     tabsContainer.Name = "TabsContainer"
     tabsContainer.Size = UDim2.new(1, 0, 0, 40)
@@ -466,8 +1017,8 @@ local function createCSGUI()
     for i, tabName in ipairs(tabs) do
         local tabButton = Instance.new("TextButton")
         tabButton.Name = tabName .. "Tab"
-        tabButton.Size = UDim2.new(0, 100, 1, 0)
-        tabButton.Position = UDim2.new(0, (i-1) * 100, 0, 0)
+        tabButton.Size = UDim2.new(0, 112, 1, 0)
+        tabButton.Position = UDim2.new(0, (i-1) * 112, 0, 0)
         tabButton.BackgroundColor3 = COLOR_BG
         tabButton.BorderSizePixel = 0
         tabButton.Text = tabName
@@ -488,10 +1039,7 @@ local function createCSGUI()
         tabButtons[tabName] = {button = tabButton, underline = underline}
     end
 
-    -- ────────────────────────────────────────────────────────────────────────────────
     -- СОДЕРЖИМОЕ ВКЛАДОК
-    -- ────────────────────────────────────────────────────────────────────────────────
-
     local contentContainer = Instance.new("Frame")
     contentContainer.Name = "ContentContainer"
     contentContainer.Size = UDim2.new(1, 0, 1, -40)
@@ -508,9 +1056,20 @@ local function createCSGUI()
     movTab.Visible = true
     movTab.Parent = contentContainer
 
+    local movLayout = Instance.new("UIListLayout")
+    movLayout.Padding = UDim.new(0, 10)
+    movLayout.Parent = movTab
+
+    local movPadding = Instance.new("UIPadding")
+    movPadding.PaddingLeft = UDim.new(0, 10)
+    movPadding.PaddingRight = UDim.new(0, 10)
+    movPadding.PaddingTop = UDim.new(0, 10)
+    movPadding.Parent = movTab
+
+    -- FLIGHT BUTTON
     local flightLabel = Instance.new("TextLabel")
-    flightLabel.Size = UDim2.new(1, -20, 0, 20)
-    flightLabel.Position = UDim2.new(0, 10, 0, 20)
+    flightLabel.Name = "FlightLabel"
+    flightLabel.Size = UDim2.new(1, 0, 0, 20)
     flightLabel.BackgroundTransparency = 1
     flightLabel.Text = "Flight System"
     flightLabel.TextColor3 = COLOR_ACCENT
@@ -521,8 +1080,7 @@ local function createCSGUI()
 
     local flightToggle = Instance.new("TextButton")
     flightToggle.Name = "FlightToggle"
-    flightToggle.Size = UDim2.new(1, -20, 0, 40)
-    flightToggle.Position = UDim2.new(0, 10, 0, 50)
+    flightToggle.Size = UDim2.new(1, 0, 0, 40)
     flightToggle.BackgroundColor3 = COLOR_HOVER
     flightToggle.BorderSizePixel = 0
     flightToggle.Text = "🪄 Enable Flight"
@@ -546,6 +1104,7 @@ local function createCSGUI()
             deactivateFlight()
             flightToggle.Text = "🪄 Enable Flight"
             flightToggle.BackgroundColor3 = COLOR_HOVER
+            flightToggle.TextColor3 = COLOR_TEXT
         else
             activateFlight()
             flightToggle.Text = "🪄 Disable Flight"
@@ -554,20 +1113,200 @@ local function createCSGUI()
         end
     end)
 
-    -- Эффект наведения
-    flightToggle.MouseEnter:Connect(function()
-        if not isFlying then
-            local tween = TweenService:Create(flightToggle, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 60, 70)})
-            tween:Play()
+    -- DAMAGE FLY BUTTON
+    local damageFlyLabel = Instance.new("TextLabel")
+    damageFlyLabel.Name = "DamageFlyLabel"
+    damageFlyLabel.Size = UDim2.new(1, 0, 0, 20)
+    damageFlyLabel.BackgroundTransparency = 1
+    damageFlyLabel.Text = "Damage Fly System"
+    damageFlyLabel.TextColor3 = COLOR_ACCENT
+    damageFlyLabel.TextSize = 14
+    damageFlyLabel.Font = Enum.Font.GothamBold
+    damageFlyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    damageFlyLabel.Parent = movTab
+
+    local damageFlyButton = Instance.new("TextButton")
+    damageFlyButton.Name = "DamageFlyButton"
+    damageFlyButton.Size = UDim2.new(1, 0, 0, 40)
+    damageFlyButton.BackgroundColor3 = COLOR_HOVER
+    damageFlyButton.BorderSizePixel = 0
+    damageFlyButton.Text = "⚡ Activate Damage Fly (X)"
+    damageFlyButton.TextColor3 = COLOR_TEXT
+    damageFlyButton.TextSize = 12
+    damageFlyButton.Font = Enum.Font.Gotham
+    damageFlyButton.Parent = movTab
+
+    local damageFlyCorner = Instance.new("UICorner")
+    damageFlyCorner.CornerRadius = UDim.new(0, 6)
+    damageFlyCorner.Parent = damageFlyButton
+
+    local damageFlyStroke = Instance.new("UIStroke")
+    damageFlyStroke.Color = COLOR_WARNING
+    damageFlyStroke.Thickness = 1
+    damageFlyStroke.Transparency = 0.5
+    damageFlyStroke.Parent = damageFlyButton
+
+    damageFlyButton.MouseButton1Click:Connect(function()
+        activateDamageFly()
+        if damageFlyConfig.active then
+            damageFlyButton.Text = "⚡ Деактивировать Damage Fly (X)"
+            damageFlyButton.BackgroundColor3 = COLOR_WARNING
+            damageFlyButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        else
+            damageFlyButton.Text = "⚡ Activate Damage Fly (X)"
+            damageFlyButton.BackgroundColor3 = COLOR_HOVER
+            damageFlyButton.TextColor3 = COLOR_TEXT
         end
     end)
 
-    flightToggle.MouseLeave:Connect(function()
-        if not isFlying then
-            local tween = TweenService:Create(flightToggle, TweenInfo.new(0.2), {BackgroundColor3 = COLOR_HOVER})
-            tween:Play()
-        end
-    end)
+    -- MOVEMENT MODES
+    local movementLabel = Instance.new("TextLabel")
+    movementLabel.Name = "MovementLabel"
+    movementLabel.Size = UDim2.new(1, 0, 0, 20)
+    movementLabel.BackgroundTransparency = 1
+    movementLabel.Text = "Movement Modes"
+    movementLabel.TextColor3 = COLOR_ACCENT
+    movementLabel.TextSize = 14
+    movementLabel.Font = Enum.Font.GothamBold
+    movementLabel.TextXAlignment = Enum.TextXAlignment.Left
+    movementLabel.Parent = movTab
+
+    -- COLLISION BUTTON
+    local collisionContainer = Instance.new("Frame")
+    collisionContainer.Name = "CollisionContainer"
+    collisionContainer.Size = UDim2.new(1, 0, 0, 60)
+    collisionContainer.BackgroundTransparency = 1
+    collisionContainer.Parent = movTab
+
+    local collisionButton = Instance.new("TextButton")
+    collisionButton.Name = "CollisionButton"
+    collisionButton.Size = UDim2.new(1, 0, 0, 40)
+    collisionButton.BackgroundColor3 = COLOR_HOVER
+    collisionButton.BorderSizePixel = 0
+    collisionButton.Text = "💥 Collision (Boost от игрока)"
+    collisionButton.TextColor3 = COLOR_TEXT
+    collisionButton.TextSize = 11
+    collisionButton.Font = Enum.Font.Gotham
+    collisionButton.Parent = collisionContainer
+
+    local collisionCorner = Instance.new("UICorner")
+    collisionCorner.CornerRadius = UDim.new(0, 6)
+    collisionCorner.Parent = collisionButton
+
+    local collisionStroke = Instance.new("UIStroke")
+    collisionStroke.Color = COLOR_ACCENT
+    collisionStroke.Thickness = 1
+    collisionStroke.Transparency = 0.5
+    collisionStroke.Parent = collisionButton
+
+    collisionButton.MouseButton1Click:Connect(activateCollision)
+
+    local collisionSlider = createSpeedSlider(collisionContainer, "collision", 50, 10, 150)
+    collisionSlider.Position = UDim2.new(0, 0, 0, 45)
+
+    -- MINIJUMP BUTTON
+    local miniJumpContainer = Instance.new("Frame")
+    miniJumpContainer.Name = "MiniJumpContainer"
+    miniJumpContainer.Size = UDim2.new(1, 0, 0, 60)
+    miniJumpContainer.BackgroundTransparency = 1
+    miniJumpContainer.Parent = movTab
+
+    local miniJumpButton = Instance.new("TextButton")
+    miniJumpButton.Name = "MiniJumpButton"
+    miniJumpButton.Size = UDim2.new(1, 0, 0, 40)
+    miniJumpButton.BackgroundColor3 = COLOR_HOVER
+    miniJumpButton.BorderSizePixel = 0
+    miniJumpButton.Text = "⬆️ MiniJump (Мини прыжки)"
+    miniJumpButton.TextColor3 = COLOR_TEXT
+    miniJumpButton.TextSize = 11
+    miniJumpButton.Font = Enum.Font.Gotham
+    miniJumpButton.Parent = miniJumpContainer
+
+    local miniJumpCorner = Instance.new("UICorner")
+    miniJumpCorner.CornerRadius = UDim.new(0, 6)
+    miniJumpCorner.Parent = miniJumpButton
+
+    local miniJumpStroke = Instance.new("UIStroke")
+    miniJumpStroke.Color = COLOR_ACCENT
+    miniJumpStroke.Thickness = 1
+    miniJumpStroke.Transparency = 0.5
+    miniJumpStroke.Parent = miniJumpButton
+
+    miniJumpButton.MouseButton1Click:Connect(activateMiniJump)
+
+    local miniJumpSlider = createSpeedSlider(miniJumpContainer, "miniJump", 30, 5, 100)
+    miniJumpSlider.Position = UDim2.new(0, 0, 0, 45)
+
+    -- SELF PUSH BUTTON
+    local selfPushContainer = Instance.new("Frame")
+    selfPushContainer.Name = "SelfPushContainer"
+    selfPushContainer.Size = UDim2.new(1, 0, 0, 60)
+    selfPushContainer.BackgroundTransparency = 1
+    selfPushContainer.Parent = movTab
+
+    local selfPushButton = Instance.new("TextButton")
+    selfPushButton.Name = "SelfPushButton"
+    selfPushButton.Size = UDim2.new(1, 0, 0, 40)
+    selfPushButton.BackgroundColor3 = COLOR_HOVER
+    selfPushButton.BorderSizePixel = 0
+    selfPushButton.Text = "👊 Self Push (Удар себя)"
+    selfPushButton.TextColor3 = COLOR_TEXT
+    selfPushButton.TextSize = 11
+    selfPushButton.Font = Enum.Font.Gotham
+    selfPushButton.Parent = selfPushContainer
+
+    local selfPushCorner = Instance.new("UICorner")
+    selfPushCorner.CornerRadius = UDim.new(0, 6)
+    selfPushCorner.Parent = selfPushButton
+
+    local selfPushStroke = Instance.new("UIStroke")
+    selfPushStroke.Color = COLOR_ACCENT
+    selfPushStroke.Thickness = 1
+    selfPushStroke.Transparency = 0.5
+    selfPushStroke.Parent = selfPushButton
+
+    selfPushButton.MouseButton1Click:Connect(activateSelfPush)
+
+    local selfPushSlider = createSpeedSlider(selfPushContainer, "selfPush", 60, 20, 200)
+    selfPushSlider.Position = UDim2.new(0, 0, 0, 45)
+
+    -- COM TAB
+    local comTab = Instance.new("Frame")
+    comTab.Name = "COMContent"
+    comTab.Size = UDim2.new(1, 0, 1, 0)
+    comTab.BackgroundTransparency = 1
+    comTab.Visible = false
+    comTab.Parent = contentContainer
+
+    local comLabel = Instance.new("TextLabel")
+    comLabel.Size = UDim2.new(1, -20, 0, 20)
+    comLabel.Position = UDim2.new(0, 10, 0, 20)
+    comLabel.BackgroundTransparency = 1
+    comLabel.Text = "Coming Soon..."
+    comLabel.TextColor3 = COLOR_TEXT
+    comLabel.TextSize = 12
+    comLabel.Font = Enum.Font.Gotham
+    comLabel.TextXAlignment = Enum.TextXAlignment.Left
+    comLabel.Parent = comTab
+
+    -- VISUAL TAB
+    local visualTab = Instance.new("Frame")
+    visualTab.Name = "VISUALContent"
+    visualTab.Size = UDim2.new(1, 0, 1, 0)
+    visualTab.BackgroundTransparency = 1
+    visualTab.Visible = false
+    visualTab.Parent = contentContainer
+
+    local visualLabel = Instance.new("TextLabel")
+    visualLabel.Size = UDim2.new(1, -20, 0, 20)
+    visualLabel.Position = UDim2.new(0, 10, 0, 20)
+    visualLabel.BackgroundTransparency = 1
+    visualLabel.Text = "Coming Soon..."
+    visualLabel.TextColor3 = COLOR_TEXT
+    visualLabel.TextSize = 12
+    visualLabel.Font = Enum.Font.Gotham
+    visualLabel.TextXAlignment = Enum.TextXAlignment.Left
+    visualLabel.Parent = visualTab
 
     -- GUI TAB
     local guiTab = Instance.new("Frame")
@@ -626,7 +1365,7 @@ local function createCSGUI()
         csButton.TextColor3 = Color3.fromRGB(0, 0, 0)
         panelButtonGui.BackgroundColor3 = COLOR_HOVER
         panelButtonGui.TextColor3 = COLOR_TEXT
-        showNotification("✓ GUI стиль: CS")
+        showNotification("✓ GUI стиль: CS", COLOR_SUCCESS)
     end)
 
     panelButtonGui.MouseButton1Click:Connect(function()
@@ -635,56 +1374,17 @@ local function createCSGUI()
         panelButtonGui.TextColor3 = Color3.fromRGB(0, 0, 0)
         csButton.BackgroundColor3 = COLOR_HOVER
         csButton.TextColor3 = COLOR_TEXT
-        showNotification("✓ GUI стиль: Panel")
+        showNotification("✓ GUI стиль: Panel", COLOR_SUCCESS)
     end)
 
-    -- COM TAB (пусто)
-    local comTab = Instance.new("Frame")
-    comTab.Name = "COMContent"
-    comTab.Size = UDim2.new(1, 0, 1, 0)
-    comTab.BackgroundTransparency = 1
-    comTab.Visible = false
-    comTab.Parent = contentContainer
-
-    local comLabel = Instance.new("TextLabel")
-    comLabel.Size = UDim2.new(1, -20, 0, 20)
-    comLabel.Position = UDim2.new(0, 10, 0, 20)
-    comLabel.BackgroundTransparency = 1
-    comLabel.Text = "Coming Soon..."
-    comLabel.TextColor3 = COLOR_TEXT
-    comLabel.TextSize = 12
-    comLabel.Font = Enum.Font.Gotham
-    comLabel.TextXAlignment = Enum.TextXAlignment.Left
-    comLabel.Parent = comTab
-
-    -- VISUAL TAB (пусто)
-    local visualTab = Instance.new("Frame")
-    visualTab.Name = "VISUALContent"
-    visualTab.Size = UDim2.new(1, 0, 1, 0)
-    visualTab.BackgroundTransparency = 1
-    visualTab.Visible = false
-    visualTab.Parent = contentContainer
-
-    local visualLabel = Instance.new("TextLabel")
-    visualLabel.Size = UDim2.new(1, -20, 0, 20)
-    visualLabel.Position = UDim2.new(0, 10, 0, 20)
-    visualLabel.BackgroundTransparency = 1
-    visualLabel.Text = "Coming Soon..."
-    visualLabel.TextColor3 = COLOR_TEXT
-    visualLabel.TextSize = 12
-    visualLabel.Font = Enum.Font.Gotham
-    visualLabel.TextXAlignment = Enum.TextXAlignment.Left
-    visualLabel.Parent = visualTab
-
-    -- ────────────────────────────────────────────────────────────────────────────────
     -- ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ ВКЛАДОК
-    -- ────────────────────────────────────────────────────────────────────────────────
-
     local function switchTab(tabName)
         currentTab = tabName
         
         for _, child in ipairs(contentContainer:GetChildren()) do
-            child.Visible = false
+            if child.Name ~= "ScrollList" then
+                child.Visible = false
+            end
         end
 
         if tabName == "MOV" then
@@ -711,15 +1411,36 @@ local function createCSGUI()
     return screenGui
 end
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
+-- HUD UPDATE LOOP
+-- ═════════════════════════════════════════════════════════════════
+
+local hudUpdateConnection = RunService.RenderStepped:Connect(function()
+    updateDamageFlyHUD()
+    
+    if not damageFlyConfig.active and damageFlyConfig.currentDuration < damageFlyConfig.maxDuration then
+        damageFlyConfig.currentDuration = damageFlyConfig.currentDuration + (damageFlyConfig.chargeRate * 0.016)
+        damageFlyConfig.isCharging = true
+    else
+        damageFlyConfig.isCharging = false
+    end
+end)
+
+table.insert(connections, hudUpdateConnection)
+
+-- ═════════════════════════════════════════════════════════════════
 -- ОБРАБОТЧИКИ ВВОДА
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local inputBeganConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     
     if input.KeyCode == Enum.KeyCode.Space then
         spaceKeyPressed = true
+    end
+    
+    if input.KeyCode == Enum.KeyCode.X then
+        activateDamageFly()
     end
 end)
 
@@ -733,12 +1454,16 @@ end)
 
 table.insert(connections, inputEndedConnection)
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 -- ОБРАБОТЧИКИ СМЕРТИ И СМЕНЫ ПЕРСОНАЖА
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 local diedConnection = humanoid.Died:Connect(function()
     deactivateFlight()
+    deactivateDamageFly()
+    movementModes.collision.enabled = false
+    movementModes.miniJump.enabled = false
+    movementModes.selfPush.enabled = false
     
     for _, connection in ipairs(connections) do
         if connection and connection.Connected then
@@ -751,6 +1476,10 @@ table.insert(connections, diedConnection)
 
 local characterAddedConnection = localPlayer.CharacterAdded:Connect(function(newCharacter)
     deactivateFlight()
+    deactivateDamageFly()
+    movementModes.collision.enabled = false
+    movementModes.miniJump.enabled = false
+    movementModes.selfPush.enabled = false
     
     for _, connection in ipairs(connections) do
         if connection and connection.Connected then
@@ -763,20 +1492,22 @@ end)
 
 table.insert(connections, characterAddedConnection)
 
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 -- ИНИЦИАЛИЗАЦИЯ
--- ═════════════════════════════════════════════════════════════════════════════════════
+-- ═════════════════════════════════════════════════════════════════
 
 showLoadingScreen()
 wait(3)
 createCSGUI()
-showNotification("✓ XCLIENT v1.3.0 загружен!")
-showNotification("✓ Executor: " .. executorName)
+showNotification("✓ XCLIENT v1.5.0 загружен!", COLOR_SUCCESS)
+showNotification("✓ Executor: " .. executorName, COLOR_ACCENT)
 
-print("═════════════════════════════════════════════════════════════════")
-print("✓ XCLIENT v1.3.0 инициализирован успешно!")
+print("════════════════════════════════════════════════════════════════")
+print("✓ XCLIENT v1.5.0 инициализирован успешно!")
 print("✓ Executor: " .. executorName)
 print("✓ Стиль: CS:GO")
-print("✓ Функции: MOV, COM, VISUAL, GUI")
-print("✓ Полет: Вкладка MOV → Enable Flight")
-print("═════════════════════════════════════════════════════════════════")
+print("✓ Функции: Flight, Damage Fly (X), Collision, MiniJump, Self Push")
+print("✓ Flight: Вкладка MOV → Enable Flight")
+print("✓ Damage Fly: Вкладка MOV → Activate Damage Fly или клавиша X")
+print("✓ Поглощение урона восстанавливает энергию для Damage Fly")
+print("════════════════════════════════════════════════════════════════")
