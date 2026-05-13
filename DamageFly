@@ -1,0 +1,461 @@
+--[[
+    ═════════════════════════════════════════════════════════════════
+    XCLIENT v1.5.0 - DAMAGE FLY SYSTEM
+    Полет на основе урона с визуальным HUD индикатором
+    ═════════════════════════════════════════════════════════════════
+--]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- ═════════════════════════════════════════════════════════════════
+-- КОНСТАНТЫ И ЦВЕТА
+-- ═════════════════════════════════════════════════════════════════
+
+local COLOR_BG = Color3.fromRGB(25, 25, 30)
+local COLOR_ACCENT = Color3.fromRGB(100, 200, 255)
+local COLOR_TEXT = Color3.fromRGB(220, 220, 220)
+local COLOR_HOVER = Color3.fromRGB(50, 50, 60)
+local COLOR_SUCCESS = Color3.fromRGB(100, 255, 100)
+local COLOR_ERROR = Color3.fromRGB(255, 100, 100)
+local COLOR_WARNING = Color3.fromRGB(255, 200, 100)
+
+-- ═════════════════════════════════════════════════════════════════
+-- DAMAGE FLY КОНФИГУРАЦИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local damageFlyConfig = {
+    enabled = false,
+    active = false,
+    maxDuration = 10, -- 10 секунд макс (100%)
+    currentDuration = 0,
+    isCharging = false,
+    chargeRate = 0.5, -- 5% в секунду (0.05 * 10)
+    drainRate = 0.1, -- 10% в секунду (0.1 * 10)
+    speed = 50,
+    minDamageToActivate = 5, -- минимум 5% урона
+    lastDamageTime = 0,
+    damageTimeout = 0.5 -- через 0.5 сек после урона можно использовать
+}
+
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local connections = {}
+local isFlying = false
+local currentVelocity = Vector3.new(0, 0, 0)
+local lastHealth = humanoid.Health
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИЯ УВЕДОМЛЕНИЙ
+-- ═════════════════════════════════════════════════════════════════
+
+local function showNotification(text, color)
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    
+    local notificationGui = Instance.new("ScreenGui")
+    notificationGui.Name = "Notification"
+    notificationGui.ResetOnSpawn = false
+    notificationGui.DisplayOrder = 9998
+    notificationGui.Parent = playerGui
+
+    local notification = Instance.new("Frame")
+    notification.Name = "NotificationFrame"
+    notification.Size = UDim2.new(0, 300, 0, 60)
+    notification.Position = UDim2.new(1, -320, 1, -80)
+    notification.BackgroundColor3 = COLOR_BG
+    notification.BorderSizePixel = 0
+    notification.Parent = notificationGui
+
+    local border = Instance.new("Frame")
+    border.Name = "Border"
+    border.Size = UDim2.new(0, 4, 1, 0)
+    border.BackgroundColor3 = color or COLOR_ACCENT
+    border.BorderSizePixel = 0
+    border.Parent = notification
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = COLOR_TEXT
+    label.TextSize = 12
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.Parent = notification
+
+    notification.Position = UDim2.new(1, 0, 1, -80)
+    local slideIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local slideInTween = TweenService:Create(notification, slideIn, {Position = UDim2.new(1, -320, 1, -80)})
+    slideInTween:Play()
+
+    wait(3)
+    local slideOut = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local slideOutTween = TweenService:Create(notification, slideOut, {Position = UDim2.new(1, 0, 1, -80)})
+    slideOutTween:Play()
+    slideOutTween.Completed:Connect(function()
+        notificationGui:Destroy()
+    end)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- DAMAGE FLY HUD
+-- ═════════════════════════════════════════════════════════════════
+
+local function createDamageFlyHUD()
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    
+    local existingHUD = playerGui:FindFirstChild("DamageFlyHUD")
+    if existingHUD then
+        existingHUD:Destroy()
+    end
+
+    local hudGui = Instance.new("ScreenGui")
+    hudGui.Name = "DamageFlyHUD"
+    hudGui.ResetOnSpawn = false
+    hudGui.DisplayOrder = 9997
+    hudGui.Parent = playerGui
+
+    -- ────────────────────────────────────────────────────────────────
+    -- ОСНОВНОЙ КРУГ HUD
+    -- ────────────────────────────────────────────────────────────────
+
+    local hudContainer = Instance.new("Frame")
+    hudContainer.Name = "HUDContainer"
+    hudContainer.Size = UDim2.new(0, 80, 0, 80)
+    hudContainer.Position = UDim2.new(0.5, -40, 1, -100)
+    hudContainer.BackgroundTransparency = 1
+    hudContainer.BorderSizePixel = 0
+    hudContainer.Parent = hudGui
+
+    -- Внешний светящийся круг
+    local outerCircle = Instance.new("Frame")
+    outerCircle.Name = "OuterCircle"
+    outerCircle.Size = UDim2.new(1, 0, 1, 0)
+    outerCircle.BackgroundColor3 = COLOR_ACCENT
+    outerCircle.BorderSizePixel = 0
+    outerCircle.Parent = hudContainer
+
+    local outerCorner = Instance.new("UICorner")
+    outerCorner.CornerRadius = UDim.new(1, 0)
+    outerCorner.Parent = outerCircle
+
+    local outerStroke = Instance.new("UIStroke")
+    outerStroke.Color = COLOR_ACCENT
+    outerStroke.Thickness = 3
+    outerStroke.Transparency = 0.3
+    outerStroke.Parent = outerCircle
+
+    -- Внутренний темный круг
+    local innerCircle = Instance.new("Frame")
+    innerCircle.Name = "InnerCircle"
+    innerCircle.Size = UDim2.new(0.7, 0, 0.7, 0)
+    innerCircle.Position = UDim2.new(0.15, 0, 0.15, 0)
+    innerCircle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    innerCircle.BorderSizePixel = 0
+    innerCircle.Parent = hudContainer
+
+    local innerCorner = Instance.new("UICorner")
+    innerCorner.CornerRadius = UDim.new(1, 0)
+    innerCorner.Parent = innerCircle
+
+    local innerStroke = Instance.new("UIStroke")
+    innerStroke.Color = COLOR_ACCENT
+    innerStroke.Thickness = 2
+    innerStroke.Transparency = 0.5
+    innerStroke.Parent = innerCircle
+
+    -- Полоса прогресса (как кольцо)
+    local progressRing = Instance.new("Frame")
+    progressRing.Name = "ProgressRing"
+    progressRing.Size = UDim2.new(0.85, 0, 0.85, 0)
+    progressRing.Position = UDim2.new(0.075, 0, 0.075, 0)
+    progressRing.BackgroundTransparency = 1
+    progressRing.BorderSizePixel = 0
+    progressRing.Parent = hudContainer
+
+    local ringStroke = Instance.new("UIStroke")
+    ringStroke.Color = COLOR_ACCENT
+    ringStroke.Thickness = 2
+    ringStroke.Transparency = 0.2
+    ringStroke.Parent = progressRing
+
+    -- Текст процента
+    local percentText = Instance.new("TextLabel")
+    percentText.Name = "PercentText"
+    percentText.Size = UDim2.new(1, 0, 1, 0)
+    percentText.BackgroundTransparency = 1
+    percentText.Text = "0%"
+    percentText.TextColor3 = COLOR_ACCENT
+    percentText.TextSize = 24
+    percentText.Font = Enum.Font.GothamBold
+    percentText.Parent = innerCircle
+
+    -- Статус текст
+    local statusText = Instance.new("TextLabel")
+    statusText.Name = "StatusText"
+    statusText.Size = UDim2.new(2, 0, 0, 30)
+    statusText.Position = UDim2.new(-0.5, 0, 1, 10)
+    statusText.BackgroundTransparency = 1
+    statusText.Text = "Ready"
+    statusText.TextColor3 = COLOR_SUCCESS
+    statusText.TextSize = 12
+    statusText.Font = Enum.Font.Gotham
+    statusText.Parent = hudContainer
+
+    return {
+        container = hudContainer,
+        outerCircle = outerCircle,
+        innerCircle = innerCircle,
+        progressRing = progressRing,
+        percentText = percentText,
+        statusText = statusText,
+        ringStroke = ringStroke,
+        outerStroke = outerStroke
+    }
+end
+
+local hudElements = createDamageFlyHUD()
+
+-- ═════════════════════════════════════════════════════════════════
+-- ОБНОВЛЕНИЕ HUD
+-- ═════════════════════════════════════════════════════════════════
+
+local function updateDamageFlyHUD()
+    local percent = math.floor((damageFlyConfig.currentDuration / damageFlyConfig.maxDuration) * 100)
+    percent = math.max(0, math.min(100, percent))
+
+    hudElements.percentText.Text = percent .. "%"
+
+    -- Изменение цвета в зависимости от состояния
+    local displayColor = COLOR_ACCENT
+    local statusLabel = "Ready"
+
+    if damageFlyConfig.active then
+        displayColor = COLOR_SUCCESS
+        statusLabel = "FLYING"
+    elseif damageFlyConfig.isCharging then
+        displayColor = COLOR_WARNING
+        statusLabel = "Charging..."
+    elseif percent <= 0 then
+        displayColor = COLOR_ERROR
+        statusLabel = "Depleted!"
+    elseif percent < 30 then
+        displayColor = COLOR_WARNING
+        statusLabel = "Low Power"
+    end
+
+    hudElements.percentText.TextColor3 = displayColor
+    hudElements.statusText.TextColor3 = displayColor
+    hudElements.statusText.Text = statusLabel
+    hudElements.outerStroke.Color = displayColor
+    hudElements.innerCircle.BorderStroke.Color = displayColor
+
+    -- Анимация размера в зависимости от состояния
+    if damageFlyConfig.active then
+        local newSize = 80 + math.sin(tick() * 5) * 3
+        hudElements.container.Size = UDim2.new(0, newSize, 0, newSize)
+    else
+        hudElements.container.Size = UDim2.new(0, 80, 0, 80)
+    end
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ОБРАБОТКА УРОНА
+-- ═════════════════════════════════════════════════════════════════
+
+local damageTakenConnection = humanoid.ChildAdded:Connect(function(child)
+    if child.Name == "BodyVelocity" or child.Name == "BodyGyro" then return end
+    
+    local currentHealth = humanoid.Health
+    local damageAmount = lastHealth - currentHealth
+    
+    if damageAmount > 0 then
+        lastHealth = currentHealth
+        damageFlyConfig.lastDamageTime = tick()
+        
+        -- Конвертируем урон в процент энергии (макс 100%)
+        local maxHealth = humanoid.MaxHealth
+        local damagePercent = (damageAmount / maxHealth) * 100
+        
+        -- Добавляем энергию (макс 100%)
+        local newDuration = damageFlyConfig.currentDuration + (damagePercent * damageFlyConfig.maxDuration / 100)
+        damageFlyConfig.currentDuration = math.min(newDuration, damageFlyConfig.maxDuration)
+        
+        showNotification("💥 +энергия! " .. math.floor(damagePercent) .. "%", COLOR_SUCCESS)
+    end
+end)
+
+table.insert(connections, damageTakenConnection)
+
+local healthChangedConnection = humanoid.HealthChanged:Connect(function(newHealth)
+    if newHealth < lastHealth then
+        local damageAmount = lastHealth - newHealth
+        lastHealth = newHealth
+        
+        if not damageFlyConfig.isCharging then
+            damageFlyConfig.isCharging = false
+        end
+    end
+end)
+
+table.insert(connections, healthChangedConnection)
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ FLIGHT
+-- ═════════════════════════════════════════════════════════════════
+
+local function activateDamageFly()
+    if damageFlyConfig.currentDuration < damageFlyConfig.minDamageToActivate then
+        showNotification("✗ Недостаточно энергии!", COLOR_ERROR)
+        return
+    end
+    
+    if damageFlyConfig.active then
+        deactivateDamageFly()
+        return
+    end
+
+    damageFlyConfig.active = true
+    showNotification("✓ Damage Fly активирован!", COLOR_SUCCESS)
+
+    local oldVelocity = rootPart:FindFirstChild("DFlyVelocity")
+    if oldVelocity then oldVelocity:Destroy() end
+    
+    local oldGyro = rootPart:FindFirstChild("DFlyGyro")
+    if oldGyro then oldGyro:Destroy() end
+
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Name = "DFlyVelocity"
+    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bodyVelocity.P = 1250
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.Parent = rootPart
+
+    local bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.Name = "DFlyGyro"
+    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bodyGyro.P = 3000
+    bodyGyro.D = 500
+    bodyGyro.Parent = rootPart
+
+    local heartbeatConnection
+    heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not damageFlyConfig.active or not character.Parent or humanoid.Health <= 0 then
+            heartbeatConnection:Disconnect()
+            if bodyVelocity and bodyVelocity.Parent then bodyVelocity:Destroy() end
+            if bodyGyro and bodyGyro.Parent then bodyGyro:Destroy() end
+            damageFlyConfig.active = false
+            return
+        end
+
+        -- Слив энергии
+        damageFlyConfig.currentDuration = damageFlyConfig.currentDuration - (damageFlyConfig.drainRate * deltaTime)
+        
+        if damageFlyConfig.currentDuration <= 0 then
+            damageFlyConfig.currentDuration = 0
+            deactivateDamageFly()
+            showNotification("✗ Энергия исчерпана!", COLOR_ERROR)
+            return
+        end
+
+        -- Движение
+        local moveDirection = humanoid.MoveDirection
+        local isSprinting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or 
+                           UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+        
+        local currentSpeed = damageFlyConfig.speed * (isSprinting and 1.5 or 1)
+        local spacePressed = UserInputService:IsKeyDown(Enum.KeyCode.Space)
+        
+        local flightDirection = moveDirection
+        if flightDirection.Magnitude > 0 then
+            flightDirection = flightDirection.Unit
+        end
+        
+        local targetVelocity = flightDirection * currentSpeed
+        targetVelocity = targetVelocity + Vector3.new(0, spacePressed and 10 or -5, 0)
+        
+        currentVelocity = currentVelocity:Lerp(targetVelocity, 0.15)
+        
+        bodyVelocity.Velocity = currentVelocity
+        rootPart.AssemblyLinearVelocity = currentVelocity
+        bodyGyro.CFrame = rootPart.CFrame
+    end)
+    
+    table.insert(connections, heartbeatConnection)
+end
+
+local function deactivateDamageFly()
+    damageFlyConfig.active = false
+    
+    local velocity = rootPart:FindFirstChild("DFlyVelocity")
+    if velocity then velocity:Destroy() end
+    
+    local gyro = rootPart:FindFirstChild("DFlyGyro")
+    if gyro then gyro:Destroy() end
+    
+    currentVelocity = Vector3.new(0, 0, 0)
+    showNotification("✓ Damage Fly отключен!", COLOR_ERROR)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- HUD UPDATE LOOP
+-- ═════════════════════════════════════════════════════════════════
+
+local hudUpdateConnection = RunService.RenderStepped:Connect(function()
+    updateDamageFlyHUD()
+    
+    -- Зарядка при простое
+    if not damageFlyConfig.active and damageFlyConfig.currentDuration < damageFlyConfig.maxDuration then
+        damageFlyConfig.currentDuration = damageFlyConfig.currentDuration + (damageFlyConfig.chargeRate * 0.016)
+        damageFlyConfig.isCharging = true
+    else
+        damageFlyConfig.isCharging = false
+    end
+end)
+
+table.insert(connections, hudUpdateConnection)
+
+-- ═════════════════════════════════════════════════════════════════
+-- ГОРЯЧАЯ КЛАВИША
+-- ═════════════════════════════════════════════════════════════════
+
+local inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- X для Damage Fly
+    if input.KeyCode == Enum.KeyCode.X then
+        activateDamageFly()
+    end
+end)
+
+table.insert(connections, inputConnection)
+
+-- ═════════════════════════════════════════════════════════════════
+-- ОЧИСТКА ПРИ СМЕРТИ
+-- ═════════════════════════════════════════════════════════════════
+
+local diedConnection = humanoid.Died:Connect(function()
+    deactivateDamageFly()
+    for _, conn in ipairs(connections) do
+        if conn and conn.Connected then
+            conn:Disconnect()
+        end
+    end
+end)
+
+table.insert(connections, diedConnection)
+
+print("════════════════════════════════════════════════════════════════")
+print("✓ Damage Fly System загружен!")
+print("✓ Горячая клавиша: X (включить/выключить)")
+print("✓ Урон восстанавливает энергию")
+print("✓ Энергия сливается со скоростью 10% в секунду")
+print("✓ Зарядка: 5% в секунду (при отключении)")
+print("════════════════════════════════════════════════════════════════")
