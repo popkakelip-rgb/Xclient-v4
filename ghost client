@@ -1,391 +1,1762 @@
--- // GHOST CLIENT - CS:GUI STYLE // --
-local player = game.Players.LocalPlayer
-local gui = Instance.new("ScreenGui")
-gui.Name = "GhostClient"
-gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
+--[[
+	Скрипт магического полета | Roblox Luau
+	Версия: 5.1 Финальная с Dodge системой
+	Особенности:
+	- CSGUI с вкладками: MOV | COM | VISUAL | GUI
+	- Анимация загрузки "xclient"
+	- Magic Resolver с умным обходом
+	- Продвинутая физика полета с инерцией
+	- Система рывков (Dash) с кулдауном
+	- SPEED функции: Collision Boost, MiniJump, Self Push
+	- DODGE система во вкладке COM
+	- Удержание кнопки на телефоне открывает настройки
+--]]
 
--- // НОТИФИКАЦИИ // --
-local function Notify(msg, duration)
-    duration = duration or 3
-    local notifyFrame = Instance.new("Frame")
-    notifyFrame.Size = UDim2.new(0, 280, 0, 40)
-    notifyFrame.Position = UDim2.new(1, 10, 0, 50)
-    notifyFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-    notifyFrame.BorderSizePixel = 0
-    notifyFrame.BackgroundTransparency = 0.15
-    notifyFrame.Parent = gui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = notifyFrame
-    
-    local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -10, 1, 0)
-    text.Position = UDim2.new(0, 5, 0, 0)
-    text.BackgroundTransparency = 1
-    text.Text = msg
-    text.TextColor3 = Color3.fromRGB(255, 255, 255)
-    text.Font = Enum.Font.Gotham
-    text.TextSize = 14
-    text.TextXAlignment = Enum.TextXAlignment.Left
-    text.Parent = notifyFrame
-    
-    notifyFrame.Position = UDim2.new(1, 10, 0, 50)
-    local tween = game:GetService("TweenService")
-    local goal = {Position = UDim2.new(1, -290, 0, 50)}
-    local fadeIn = tween:Create(notifyFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), goal)
-    fadeIn:Play()
-    
-    task.wait(duration)
-    local fadeOut = tween:Create(notifyFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Position = UDim2.new(1, 10, 0, 50)})
-    fadeOut:Play()
-    task.wait(0.3)
-    notifyFrame:Destroy()
+-- Сервисы
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Плеер
+local player = Players.LocalPlayer
+if not player then player = game.Players.LocalPlayer end
+
+local character = player.Character
+if not character then
+	player.CharacterAdded:Wait()
+	character = player.Character
 end
 
--- // АНИМАЦИЯ ЗАГРУЗКИ "GHOST CLIENT" // --
-local function ShowSplash()
-    local splash = Instance.new("Frame")
-    splash.Size = UDim2.new(1, 0, 1, 0)
-    splash.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    splash.BackgroundTransparency = 0
-    splash.BorderSizePixel = 0
-    splash.Parent = gui
-    
-    local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(0, 400, 0, 80)
-    text.Position = UDim2.new(0.5, -200, 0.5, -40)
-    text.BackgroundTransparency = 1
-    text.Text = "GHOST CLIENT"
-    text.TextColor3 = Color3.fromRGB(255, 255, 255)
-    text.Font = Enum.Font.GothamBold
-    text.TextSize = 48
-    text.TextScaled = true
-    text.Parent = splash
-    
-    local tween = game:GetService("TweenService")
-    tween:Create(splash, TweenInfo.new(1, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
-    task.wait(1.5)
-    splash:Destroy()
-end
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
 
--- // КРУГЛАЯ ИКОНКА (слева сверху, чёрный фон, белый текст "ghost client") // --
-local icon = Instance.new("ImageButton")
-icon.Size = UDim2.new(0, 60, 0, 60)
-icon.Position = UDim2.new(0, 15, 0, 15)
-icon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-icon.BackgroundTransparency = 0
-icon.AutoButtonColor = true
-icon.Parent = gui
+-- ============================================
+-- НАСТРОЙКИ
+-- ============================================
+local FlightSpeed = 20
+local MagicResolverEnabled = false
+local MagicResolverRadius = 15
+local MagicResolverBoostSpeed = 28
+local FlightEffectsEnabled = true
+local FlightDashEnabled = true
+local FlightDashCooldown = 1.5
+local GUIStyle = "CS"
+local detectedExploit = "Unknown"
 
-local iconCorner = Instance.new("UICorner")
-iconCorner.CornerRadius = UDim.new(1, 0)
-iconCorner.Parent = icon
+-- SPEED настройки
+local CollisionBoostEnabled = false
+local CollisionBoostRadius = 8
+local CollisionBoostSpeed = 40
 
-local iconText = Instance.new("TextLabel")
-iconText.Size = UDim2.new(1, 0, 1, 0)
-iconText.BackgroundTransparency = 1
-iconText.Text = "ghost\nclient"
-iconText.TextColor3 = Color3.fromRGB(255, 255, 255)
-iconText.Font = Enum.Font.GothamBold
-iconText.TextSize = 14
-iconText.TextWrapped = true
-iconText.Parent = icon
+local MiniJumpEnabled = false
+local MiniJumpSpeed = 25
 
--- // CS:GUI ОСНОВНОЕ ОКНО // --
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 500, 0, 350)
-mainFrame.Position = UDim2.new(0.5, -250, 0.5, -175)
-mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-mainFrame.BackgroundTransparency = 0.05
-mainFrame.BorderSizePixel = 0
-mainFrame.Visible = false
-mainFrame.Parent = gui
+local SelfPushEnabled = false
+local SelfPushSpeed = 50
+local SelfPushGlove = "Пощечина"
 
-local frameCorner = Instance.new("UICorner")
-frameCorner.CornerRadius = UDim.new(0, 8)
-frameCorner.Parent = mainFrame
+-- DODGE настройки
+local DodgeEnabled = true
+local DodgeRadius = 18
+local DodgePredictTime = 0.28
+local DodgeBaseForce = 18
+local DodgeSpeedMultiplier = 0.45
+local DodgeCooldown = 0.35
+local lastDodge = 0
 
--- Заголовок
-local titleBar = Instance.new("Frame")
-titleBar.Size = UDim2.new(1, 0, 0, 40)
-titleBar.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-titleBar.BackgroundTransparency = 0.2
-titleBar.BorderSizePixel = 0
-titleBar.Parent = mainFrame
-
-local titleCorner = Instance.new("UICorner")
-titleCorner.CornerRadius = UDim.new(0, 8)
-titleCorner.Parent = titleBar
-
-local titleText = Instance.
-
-new("TextLabel")
-titleText.Size = UDim2.new(0.5, 0, 1, 0)
-titleText.BackgroundTransparency = 1
-titleText.Text = "CS:GUI | GHOST CLIENT"
-titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleText.Font = Enum.Font.GothamBold
-titleText.TextSize = 18
-titleText.TextXAlignment = Enum.TextXAlignment.Left
-titleText.Position = UDim2.new(0, 15, 0, 0)
-titleText.Parent = titleBar
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 40, 0, 40)
-closeBtn.Position = UDim2.new(1, -40, 0, 0)
-closeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
-closeBtn.Text = "✕"
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 20
-closeBtn.Parent = titleBar
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 8)
-closeCorner.Parent = closeBtn
-
--- // ВКЛАДКИ (а-ля CS:GO) // --
-local tabContainer = Instance.new("Frame")
-tabContainer.Size = UDim2.new(1, 0, 0, 40)
-tabContainer.Position = UDim2.new(0, 0, 0, 40)
-tabContainer.BackgroundTransparency = 1
-tabContainer.Parent = mainFrame
-
-local tabs = {"mov", "com", "visual", "gui"}
-local activeTab = "mov"
-
-local tabButtons = {}
-local contentFrames = {}
-
-for i, tabName in ipairs(tabs) do
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.25, 0, 1, 0)
-    btn.Position = UDim2.new((i-1)*0.25, 0, 0, 0)
-    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-    btn.BackgroundTransparency = 0
-    btn.Text = string.upper(tabName)
-    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 14
-    btn.Parent = tabContainer
-    
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 4)
-    btnCorner.Parent = btn
-    
-    tabButtons[tabName] = btn
-    
-    local content = Instance.new("Frame")
-    content.Size = UDim2.new(1, 0, 1, -80)
-    content.Position = UDim2.new(0, 0, 0, 80)
-    content.BackgroundTransparency = 1
-    content.Visible = (i == 1)
-    content.Parent = mainFrame
-    contentFrames[tabName] = content
-end
-
--- // ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ ВКЛАДОК // --
-local function SwitchTab(tabName)
-    activeTab = tabName
-    for t, btn in pairs(tabButtons) do
-        btn.BackgroundColor3 = (t == tabName) and Color3.fromRGB(80, 80, 90) or Color3.fromRGB(35, 35, 40)
-        btn.TextColor3 = (t == tabName) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(180, 180, 180)
-    end
-    for t, frame in pairs(contentFrames) do
-        frame.Visible = (t == tabName)
-    end
-end
-
-for tabName, btn in pairs(tabButtons) do
-    btn.MouseButton1Click:Connect(function()
-        SwitchTab(tabName)
-    end)
-end
-
--- // ВКЛАДКА MOV (с Magic Fly) // --
-local movContent = contentFrames["mov"]
-local flyEnabled = false
-local flyConnection = nil
-
-local flyBtn = Instance.new("TextButton")
-flyBtn.Size = UDim2.new(0.4, 0, 0, 40)
-flyBtn.Position = UDim2.new(0.05, 0, 0.1, 0)
-flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-flyBtn.Text = "MAGIC FLY: OFF"
-flyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-flyBtn.Font = Enum.Font.Gotham
-flyBtn.TextSize = 16
-flyBtn.Parent = movContent
-
-local flyCorner = Instance.new("UICorner")
-flyCorner.CornerRadius = UDim.new(0, 6)
-flyCorner.Parent = flyBtn
-
-local function StartFly()
-    local char = player.Character or player.CharacterAdded:Wait()
-    local hrp = char:WaitForChild("HumanoidRootPart")
-    local bodyVel = Instance.new("BodyVelocity")
-    bodyVel.MaxForce = Vector3.new(10000, 10000, 10000)
-    bodyVel.Velocity = Vector3.new(0, 0, 0)
-    bodyVel.Parent = hrp
-    
-    local flyConnection
-    flyConnection = game:GetService("RunService").RenderStepped:Connect(function()
-        if hrp and hrp.Parent then
-            local moveDir = Vector3.new()
-            local camera = workspace.CurrentCamera
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camera.CFrame.LookVector end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camera.CFrame.LookVector end
-
-if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camera.CFrame.RightVector end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camera.CFrame.RightVector end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-            if game:GetService("UserInputService"):IsKeyDown(Enum.KeyCode.LeftControl) then moveDir = moveDir + Vector3.new(0, -1, 0) end
-            
-            if moveDir.Magnitude > 0 then
-                moveDir = moveDir.Unit * 50
-            end
-            bodyVel.Velocity = moveDir
-        end
-    end)
-    return bodyVel, flyConnection
-end
-
-flyBtn.MouseButton1Click:Connect(function()
-    flyEnabled = not flyEnabled
-    if flyEnabled then
-        local char = player.Character or player.CharacterAdded:Wait()
-        local hrp = char:WaitForChild("HumanoidRootPart")
-        local bodyVel, conn = StartFly()
-        flyBtn.Text = "MAGIC FLY: ON"
-        flyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-        Notify("✈ Magic Fly включён!", 2)
-        
-        player.CharacterAdded:Connect(function(newChar)
-            if flyEnabled then
-                task.wait(0.5)
-                local newHrp = newChar:WaitForChild("HumanoidRootPart")
-                local newVel = Instance.new("BodyVelocity")
-                newVel.MaxForce = Vector3.new(10000, 10000, 10000)
-                newVel.Parent = newHrp
-            end
-        end)
-    else
-        local char = player.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                for _, v in pairs(hrp:GetChildren()) do
-                    if v:IsA("BodyVelocity") then v:Destroy() end
-                end
-            end
-        end
-        flyBtn.Text = "MAGIC FLY: OFF"
-        flyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-        Notify("✈ Magic Fly выключен", 2)
-    end
-end)
-
--- // ВКЛАДКА GUI (выбор стиля: Panel или CS) // --
-local guiContent = contentFrames["gui"]
-local selectedStyle = "cs"
-
-local styleLabel = Instance.new("TextLabel")
-styleLabel.Size = UDim2.new(0.9, 0, 0, 30)
-styleLabel.Position = UDim2.new(0.05, 0, 0.05, 0)
-styleLabel.BackgroundTransparency = 1
-styleLabel.Text = "Стиль GUI:"
-styleLabel.TextColor3 = Color3.fromRGB(255,255,255)
-styleLabel.Font = Enum.Font.Gotham
-styleLabel.TextSize = 18
-styleLabel.TextXAlignment = Enum.TextXAlignment.Left
-styleLabel.Parent = guiContent
-
-local panelBtn = Instance.new("TextButton")
-panelBtn.Size = UDim2.new(0.4, 0, 0, 40)
-panelBtn.Position = UDim2.new(0.05, 0, 0.2, 0)
-panelBtn.BackgroundColor3 = Color3.fromRGB(50,50,55)
-panelBtn.Text = "PANEL"
-panelBtn.TextColor3 = Color3.fromRGB(255,255,255)
-panelBtn.Font = Enum.Font.Gotham
-panelBtn.TextSize = 16
-panelBtn.Parent = guiContent
-
-local csBtn = Instance.new("TextButton")
-csBtn.Size = UDim2.new(0.4, 0, 0, 40)
-csBtn.Position = UDim2.new(0.55, 0, 0.2, 0)
-csBtn.BackgroundColor3 = Color3.fromRGB(80,80,90)
-csBtn.Text = "CS"
-csBtn.TextColor3 = Color3.fromRGB(255,255,255)
-csBtn.Font = Enum.Font.Gotham
-csBtn.TextSize = 16
-csBtn.Parent = guiContent
-
-local applyBtn = Instance.new("TextButton")
-applyBtn.Size = UDim2.new(0.4, 0, 0, 40)
-applyBtn.Position = UDim2.new(0.3, 0, 0.5, 0)
-applyBtn.BackgroundColor3 = Color3.fromRGB(0,120,200)
-applyBtn.Text = "ПРИМЕНИТЬ"
-applyBtn.TextColor3 = Color3.fromRGB(255,255,255)
-applyBtn.Font = Enum.Font.GothamBold
-applyBtn.TextSize = 16
-applyBtn.Parent = guiContent
-
-applyBtn.MouseButton1Click:Connect(function()
-    Notify("Выбран стиль: " .. string.upper(selectedStyle) .. " (перезайдите для полного эффекта)", 3)
-end)
-
-panelBtn.MouseButton1Click:Connect(function()
-    selectedStyle = "panel"
-    panelBtn.BackgroundColor3 = Color3.fromRGB(80,80,90)
-    csBtn.BackgroundColor3 = Color3.fromRGB(50,50,55)
-end)
-
-csBtn.MouseButton1Click:Connect(function()
-    selectedStyle = "cs"
-    csBtn.BackgroundColor3 = Color3.fromRGB(80,80,90)
-    panelBtn.BackgroundColor3 = Color3.fromRGB(50,50,55)
-
-end)
-
--- // ДОБАВИМ ПЛАШКИ В ДРУГИЕ ВКЛАДКИ ДЛЯ КРАСОТЫ // --
-local comContent = contentFrames["com"]
-local comLabel = Instance.new("TextLabel")
-comLabel.Size = UDim2.new(0.9,0,0,30)
-comLabel.Position = UDim2.new(0.05,0,0.05,0)
-comLabel.BackgroundTransparency = 1
-comLabel.Text = "Combat functions (soon)"
-comLabel.TextColor3 = Color3.fromRGB(200,200,200)
-comLabel.Font = Enum.Font.Gotham
-comLabel.TextSize = 16
-comLabel.Parent = comContent
-
-local visualContent = contentFrames["visual"]
-local visualLabel = Instance.new("TextLabel")
-visualLabel.Size = UDim2.new(0.9,0,0,30)
-visualLabel.Position = UDim2.new(0.05,0,0.05,0)
-visualLabel.BackgroundTransparency = 1
-visualLabel.Text = "Visual functions (soon)"
-visualLabel.TextColor3 = Color3.fromRGB(200,200,200)
-visualLabel.Font = Enum.Font.Gotham
-visualLabel.TextSize = 16
-visualLabel.Parent = visualContent
-
--- // ОТКРЫТИЕ/ЗАКРЫТИЕ GUI // --
+-- Состояния
+local isFlying = false
 local menuOpen = false
-icon.MouseButton1Click:Connect(function()
-    menuOpen = not menuOpen
-    mainFrame.Visible = menuOpen
+local mainFrame = nil
+local mainIcon = nil
+local guiSystem = nil
+local notificationFrame = nil
+local flightConnection = nil
+
+-- Удержание кнопки
+local holdThreshold = 0.5
+
+-- ============================================
+-- УНИВЕРСАЛЬНЫЕ ФУНКЦИИ
+-- ============================================
+local function wait(seconds)
+	local start = tick()
+	repeat RunService.Heartbeat:Wait() until tick() - start >= seconds
+end
+
+local function spawnTask(func)
+	coroutine.wrap(func)()
+end
+
+local function safeFindChild(parent, name)
+	local success, result = pcall(function() return parent:FindFirstChild(name) end)
+	if success and result then return result end
+	return nil
+end
+
+-- ============================================
+-- АВТО-ОПРЕДЕЛЕНИЕ ЭКСПЛОЙТА
+-- ============================================
+local exploitChecks = {
+	{name = "Synapse X", check = function() return syn and syn.request end},
+	{name = "KRNL", check = function() return KRNL_LOADED end},
+	{name = "Fluxus", check = function() return fluxus end},
+	{name = "Delta", check = function() return delta and delta.identifyexecutor end},
+	{name = "Codex", check = function() return codex end},
+	{name = "Xeno", check = function() return isxeno end},
+	{name = "Arceus X", check = function() return ArceusXLoaded end},
+	{name = "Hydrogen", check = function() return ishydrogen end},
+	{name = "ScriptWare", check = function() return sw_booted end},
+	{name = "Nihon", check = function() return nihon end},
+}
+
+for _, exploit in ipairs(exploitChecks) do
+	local success, result = pcall(exploit.check)
+	if success and result then detectedExploit = exploit.name; break end
+end
+
+pcall(function()
+	if identifyexecutor then
+		local name = identifyexecutor()
+		if name and name ~= "" then detectedExploit = name end
+	end
 end)
 
-closeBtn.MouseButton1Click:Connect(function()
-    menuOpen = false
-    mainFrame.Visible = false
+pcall(function()
+	if getexecutorname then
+		local name = getexecutorname()
+		if name and name ~= "" then detectedExploit = name end
+	end
 end)
 
--- // ЗАПУСК АНИМАЦИИ ЗАГРУЗКИ И НОТИФИКАЦИЯ // --
-ShowSplash()
-task.wait(0.5)
-Notify("Скрипт Ghost Client загружен!", 2)
+-- ============================================
+-- СИСТЕМА УВЕДОМЛЕНИЙ
+-- ============================================
+local function createNotification(text, duration)
+	duration = duration or 3
+	if not notificationFrame then return end
+	
+	pcall(function()
+		local frame = Instance.new("Frame")
+		frame.Parent = notificationFrame
+		frame.Size = UDim2.new(0, 280, 0, 35)
+		frame.Position = UDim2.new(0.5, -140, 1, 0)
+		frame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+		frame.BorderSizePixel = 0
+		frame.BackgroundTransparency = 0.05
+		
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = frame
+		
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = Color3.fromRGB(200, 180, 255)
+		stroke.Transparency = 0.7
+		stroke.Thickness = 1
+		stroke.Parent = frame
+		
+		local label = Instance.new("TextLabel")
+		label.Parent = frame
+		label.Size = UDim2.new(1, -10, 1, 0)
+		label.Position = UDim2.new(0, 8, 0, 0)
+		label.BackgroundTransparency = 1
+		label.Text = text
+		label.TextColor3 = Color3.fromRGB(230, 220, 255)
+		label.TextSize = 12
+		label.Font = Enum.Font.GothamSemibold
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		
+		local tweenIn = TweenService:Create(frame, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0.5, -140, 1, -55)
+		})
+		tweenIn:Play()
+		
+		spawnTask(function()
+			wait(duration)
+			pcall(function()
+				if frame and frame.Parent then
+					local tweenOut = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+						Position = UDim2.new(0.5, -140, 1, 0),
+						BackgroundTransparency = 1
+					})
+					tweenOut:Play()
+					tweenOut.Completed:Connect(function()
+						pcall(function() if frame and frame.Parent then frame:Destroy() end end)
+					end)
+				end
+			end)
+		end)
+	end)
+end
+
+-- ============================================
+-- DODGE СИСТЕМА
+-- ============================================
+local function getClosestThreat(hrp)
+	local closest, vel, predicted
+	local bestDist = DodgeRadius
+
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= player and p.Character then
+			local root = p.Character:FindFirstChild("HumanoidRootPart")
+
+			if root then
+				local v = root.AssemblyLinearVelocity or root.Velocity or Vector3.zero
+				local future = root.Position + (v * DodgePredictTime)
+
+				local dist = (future - hrp.Position).Magnitude
+
+				if dist < bestDist then
+					bestDist = dist
+					closest = root
+					vel = v
+					predicted = future
+				end
+			end
+		end
+	end
+
+	return closest, vel, predicted, bestDist
+end
+
+local function SmartDodge(hrp, hum)
+	if not DodgeEnabled then return end
+	if tick() - lastDodge < DodgeCooldown then return end
+
+	local enemy, vel, predicted, dist = getClosestThreat(hrp)
+
+	if enemy and predicted then
+		-- Направление ОТ будущей позиции врага
+		local away = (hrp.Position - predicted)
+
+		if away.Magnitude == 0 then return end
+		away = away.Unit
+
+		-- Учитываем движение игрока
+		local moveDir = hum.MoveDirection
+
+		-- Смешиваем направления (плавный dodge)
+		local finalDir = (away * 0.8 + moveDir * 0.3)
+		if finalDir.Magnitude < 0.01 then
+			finalDir = away
+		end
+		finalDir = finalDir.Unit
+
+		-- Сила зависит от скорости врага
+		local enemySpeed = vel.Magnitude
+		local force = DodgeBaseForce + (enemySpeed * DodgeSpeedMultiplier)
+
+		-- Применение velocity dodge
+		local currentY = hrp.Velocity.Y or 0
+		if hrp.AssemblyLinearVelocity then
+			currentY = hrp.AssemblyLinearVelocity.Y
+		end
+		
+		pcall(function()
+			if hrp.AssemblyLinearVelocity then
+				hrp.AssemblyLinearVelocity = Vector3.new(
+					finalDir.X * force,
+					currentY,
+					finalDir.Z * force
+				)
+			elseif hrp.Velocity then
+				hrp.Velocity = Vector3.new(
+					finalDir.X * force,
+					currentY,
+					finalDir.Z * force
+				)
+			end
+		end)
+
+		lastDodge = tick()
+		
+		-- Визуальный эффект доджа
+		pcall(function()
+			local dodgeEffect = Instance.new("ParticleEmitter")
+			dodgeEffect.Parent = hrp
+			dodgeEffect.Texture = "rbxassetid://241685724"
+			dodgeEffect.Color = ColorSequence.new(Color3.fromRGB(100, 200, 255))
+			dodgeEffect.Size = NumberSequence.new(0.3)
+			dodgeEffect.Lifetime = NumberRange.new(0.1, 0.3)
+			dodgeEffect.Rate = 20
+			dodgeEffect.Speed = NumberRange.new(2, 5)
+			dodgeEffect:Emit(10)
+			
+			wait(0.2)
+			dodgeEffect:Destroy()
+		end)
+	end
+end
+
+-- ============================================
+-- SPEED ФУНКЦИИ
+-- ============================================
+
+-- 1. COLLISION BOOST
+local function startCollisionBoost()
+	spawnTask(function()
+		while CollisionBoostEnabled and isFlying do
+			wait(0.1)
+			
+			if not rootPart or not rootPart.Parent then break end
+			
+			pcall(function()
+				for _, otherPlayer in ipairs(Players:GetPlayers()) do
+					if otherPlayer ~= player and otherPlayer.Character then
+						local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
+						local otherHumanoid = otherPlayer.Character:FindFirstChild("Humanoid")
+						
+						if otherRoot and otherHumanoid and otherHumanoid.Health > 0 then
+							local distance = (rootPart.Position - otherRoot.Position).Magnitude
+							
+							if distance <= CollisionBoostRadius then
+								local direction = (rootPart.Position - otherRoot.Position).Unit
+								if direction.Magnitude < 0.1 then
+									direction = Vector3.new(math.random(), 1, math.random()).Unit
+								end
+								
+								local boostForce = direction * CollisionBoostSpeed
+								if rootPart.AssemblyLinearVelocity then
+									rootPart.AssemblyLinearVelocity = boostForce
+								else
+									rootPart.Velocity = boostForce
+								end
+								
+								local particle = Instance.new("ParticleEmitter")
+								particle.Parent = rootPart
+								particle.Texture = "rbxassetid://241685724"
+								particle.Color = ColorSequence.new(Color3.fromRGB(255, 200, 100))
+								particle.Size = NumberSequence.new(0.5)
+								particle.Lifetime = NumberRange.new(0.2, 0.4)
+								particle.Rate = 30
+								particle.Speed = NumberRange.new(5, 10)
+								particle:Emit(15)
+								
+								wait(0.3)
+								particle:Destroy()
+							end
+						end
+					end
+				end
+			end)
+		end
+	end)
+end
+
+-- 2. MINIJUMP
+local function startMiniJump()
+	spawnTask(function()
+		while MiniJumpEnabled and isFlying do
+			wait(0.05)
+			
+			if not rootPart or not rootPart.Parent then break end
+			if not humanoid or humanoid.Health <= 0 then break end
+			
+			pcall(function()
+				local jumpPower = MiniJumpSpeed / 3
+				
+				local currentY = 0
+				if rootPart.AssemblyLinearVelocity then
+					currentY = rootPart.AssemblyLinearVelocity.Y
+				elseif rootPart.Velocity then
+					currentY = rootPart.Velocity.Y
+				end
+				
+				local newVel = Vector3.new(0, jumpPower, 0)
+				
+				if rootPart.AssemblyLinearVelocity then
+					rootPart.AssemblyLinearVelocity = newVel
+				else
+					rootPart.Velocity = newVel
+				end
+			end)
+		end
+	end)
+end
+
+-- 3. SELF PUSH
+local function findSlapGlove()
+	local gloveName = SelfPushGlove
+	
+	if player.Backpack then
+		for _, tool in ipairs(player.Backpack:GetChildren()) do
+			if tool:IsA("Tool") and (tool.Name:lower():find(gloveName:lower()) or tool.Name == gloveName) then
+				return tool
+			end
+		end
+	end
+	
+	if character then
+		for _, tool in ipairs(character:GetChildren()) do
+			if tool:IsA("Tool") and (tool.Name:lower():find(gloveName:lower()) or tool.Name == gloveName) then
+				return tool
+			end
+		end
+	end
+	
+	local slapNames = {"Пощечина", "Slap", "пощечина", "slap", "Железная", "Золотая", "Алмазная", "Изумрудная", "Рубиновая", "Черная", "Солнечная", "Слизневая", "Галактическая", "Глитч", "Брызгающая", "Мармеладная"}
+	
+	if player.Backpack then
+		for _, tool in ipairs(player.Backpack:GetChildren()) do
+			if tool:IsA("Tool") then
+				for _, name in ipairs(slapNames) do
+					if tool.Name:lower():find(name:lower()) then
+						return tool
+					end
+				end
+			end
+		end
+	end
+	
+	if character then
+		for _, tool in ipairs(character:GetChildren()) do
+			if tool:IsA("Tool") then
+				for _, name in ipairs(slapNames) do
+					if tool.Name:lower():find(name:lower()) then
+						return tool
+					end
+				end
+			end
+		end
+	end
+	
+	return nil
+end
+
+local function activateSlapGlove()
+	local glove = findSlapGlove()
+	if not glove then
+		createNotification("Пощечина не найдена в инвентаре!", 2)
+		return false
+	end
+	
+	if glove.Parent == player.Backpack then
+		humanoid:EquipTool(glove)
+		wait(0.1)
+	end
+	
+	local activateRemote = nil
+	
+	for _, child in ipairs(glove:GetDescendants()) do
+		if child:IsA("RemoteEvent") and (child.Name:lower():find("activate") or child.Name:lower():find("fire") or child.Name:lower():find("use") or child.Name:lower():find("slap")) then
+			activateRemote = child
+			break
+		end
+	end
+	
+	if not activateRemote then
+		for _, child in ipairs(ReplicatedStorage:GetDescendants()) do
+			if child:IsA("RemoteEvent") and (child.Name:lower():find("slap") or child.Name:lower():find("hit") or child.Name:lower():find("activate")) then
+				activateRemote = child
+				break
+			end
+		end
+	end
+	
+	if activateRemote then
+		pcall(function()
+			activateRemote:FireServer(character, rootPart.Position)
+			return true
+		end)
+	else
+		pcall(function()
+			humanoid.PlatformStand = true
+			
+			local randomDir = Vector3.new(math.random(-100, 100)/100, 1, math.random(-100, 100)/100).Unit
+			local pushForce = randomDir * SelfPushSpeed
+			
+			if rootPart.AssemblyLinearVelocity then
+				rootPart.AssemblyLinearVelocity = pushForce
+			else
+				rootPart.Velocity = pushForce
+			end
+			
+			wait(0.1)
+			humanoid.PlatformStand = false
+			return true
+		end)
+	end
+	
+	return false
+end
+
+local function startSelfPush()
+	spawnTask(function()
+		while SelfPushEnabled and isFlying do
+			wait(0.5)
+			
+			if not isFlying then break end
+			if not rootPart or not rootPart.Parent then break end
+			
+			pcall(function()
+				activateSlapGlove()
+			end)
+		end
+	end)
+end
+
+-- ============================================
+-- БАЗОВЫЙ ПОЛЕТ
+-- ============================================
+local function flightLoop(deltaTime)
+	if not character or not character.Parent or not humanoid or humanoid.Health <= 0 then
+		stopFlight()
+		return
+	end
+	
+	if not rootPart or not rootPart.Parent then
+		stopFlight()
+		return
+	end
+
+	local camera = Workspace.CurrentCamera
+	if not camera then return end
+	
+	local cameraDirection = camera.CFrame.LookVector
+	
+	local moveDirection = Vector3.zero
+	
+	pcall(function()
+		if humanoid.MoveDirection.Magnitude > 0 then
+			moveDirection = (humanoid.MoveDirection.Z * cameraDirection + humanoid.MoveDirection.X * camera.CFrame.RightVector)
+			if moveDirection.Magnitude > 0 then moveDirection = moveDirection.Unit end
+		end
+	end)
+	
+	if moveDirection.Magnitude < 0.1 then
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDirection += cameraDirection end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDirection -= cameraDirection end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDirection += camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDirection -= camera.CFrame.RightVector end
+		if moveDirection.Magnitude > 0 then moveDirection = moveDirection.Unit end
+	end
+	
+	if moveDirection.Magnitude < 0.1 then moveDirection = cameraDirection end
+	
+	local verticalInput = 0
+	if UserInputService:IsKeyDown(Enum.KeyCode.Space) then verticalInput = 1 end
+	if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then verticalInput = -1 end
+	pcall(function() if humanoid.Jump then verticalInput = 1; humanoid.Jump = false end end)
+	
+	local newPosition = rootPart.Position + (moveDirection * FlightSpeed + Vector3.new(0, verticalInput * FlightSpeed * 0.8, 0)) * deltaTime
+	
+	pcall(function()
+		rootPart.CFrame = CFrame.new(newPosition) * rootPart.CFrame.Rotation
+		if rootPart.AssemblyLinearVelocity then
+			rootPart.AssemblyLinearVelocity = Vector3.zero
+			rootPart.AssemblyAngularVelocity = Vector3.zero
+		else
+			rootPart.Velocity = Vector3.zero
+			rootPart.RotVelocity = Vector3.zero
+		end
+	end)
+	
+	-- DODGE в каждом кадре
+	pcall(function()
+		SmartDodge(rootPart, humanoid)
+	end)
+end
+
+function startFlight()
+	if flightConnection then return end
+	
+	pcall(function()
+		humanoid.PlatformStand = true
+		if rootPart.AssemblyLinearVelocity then
+			rootPart.AssemblyLinearVelocity = Vector3.zero
+		else
+			rootPart.Velocity = Vector3.zero
+		end
+	end)
+	
+	isFlying = true
+	flightConnection = RunService.Heartbeat:Connect(flightLoop)
+	
+	if CollisionBoostEnabled then startCollisionBoost() end
+	if MiniJumpEnabled then startMiniJump() end
+	if SelfPushEnabled then startSelfPush() end
+end
+
+function stopFlight()
+	if flightConnection then
+		pcall(function() flightConnection:Disconnect() end)
+		flightConnection = nil
+	end
+	
+	pcall(function()
+		humanoid.PlatformStand = false
+		if rootPart then
+			if rootPart.AssemblyLinearVelocity then
+				rootPart.AssemblyLinearVelocity = Vector3.zero
+			else
+				rootPart.Velocity = Vector3.zero
+			end
+		end
+	end)
+	
+	isFlying = false
+end
+
+-- ============================================
+-- СОЗДАНИЕ ОКНА НАСТРОЕК SPEED/DODGE
+-- ============================================
+local function createSettingsWindow(parent, title)
+	local window = Instance.new("Frame")
+	window.Name = title .. "Settings"
+	window.Parent = parent
+	window.Size = UDim2.new(0, 260, 0, 180)
+	window.Position = UDim2.new(0.5, -130, 0.5, -90)
+	window.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+	window.BorderSizePixel = 0
+	window.Visible = false
+	window.ZIndex = 10
+	
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = window
+	
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(150, 120, 255)
+	stroke.Transparency = 0.5
+	stroke.Thickness = 1.5
+	stroke.Parent = window
+	
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Parent = window
+	titleLabel.Size = UDim2.new(1, 0, 0, 30)
+	titleLabel.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+	titleLabel.Text = title .. " НАСТРОЙКИ"
+	titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	titleLabel.TextSize = 12
+	titleLabel.Font = Enum.Font.GothamBold
+	
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Parent = titleLabel
+	closeBtn.Size = UDim2.new(0, 24, 0, 24)
+	closeBtn.Position = UDim2.new(1, -28, 0, 3)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	closeBtn.Text = "×"
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextSize = 16
+	closeBtn.Font = Enum.Font.GothamBold
+	
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(1, 0)
+	closeCorner.Parent = closeBtn
+	
+	closeBtn.MouseButton1Click:Connect(function()
+		window.Visible = false
+	end)
+	
+	local scrollFrame = Instance.new("ScrollingFrame")
+	scrollFrame.Parent = window
+	scrollFrame.Size = UDim2.new(1, 0, 1, -30)
+	scrollFrame.Position = UDim2.new(0, 0, 0, 30)
+	scrollFrame.BackgroundTransparency = 1
+	scrollFrame.BorderSizePixel = 0
+	scrollFrame.ScrollBarThickness = 3
+	scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 250)
+	
+	local uiList = Instance.new("UIListLayout")
+	uiList.Parent = scrollFrame
+	uiList.Padding = UDim.new(0, 8)
+	uiList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	
+	local uiPadding = Instance.new("UIPadding")
+	uiPadding.Parent = scrollFrame
+	uiPadding.PaddingTop = UDim.new(0, 10)
+	uiPadding.PaddingLeft = UDim.new(0, 12)
+	uiPadding.PaddingRight = UDim.new(0, 12)
+	
+	return window, scrollFrame
+end
+
+-- ============================================
+-- CSGUI ИНТЕРФЕЙС
+-- ============================================
+local function createGUI()
+	pcall(function()
+		local oldGui = player.PlayerGui:FindFirstChild("FlightSystemGUI")
+		if oldGui then oldGui:Destroy() end
+	end)
+
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "FlightSystemGUI"
+	screenGui.Parent = player.PlayerGui
+	screenGui.ResetOnSpawn = false
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+	-- Иконка XC
+	mainIcon = Instance.new("ImageButton")
+	mainIcon.Name = "MainIcon"
+	mainIcon.Parent = screenGui
+	mainIcon.Size = UDim2.new(0, 48, 0, 48)
+	mainIcon.Position = UDim2.new(0, 15, 0, 15)
+	mainIcon.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	mainIcon.BackgroundTransparency = 0.15
+	mainIcon.Image = ""
+	mainIcon.ImageTransparency = 1
+	mainIcon.Active = true
+	mainIcon.Selectable = true
+	mainIcon.AutoButtonColor = false
+	
+	local iconCorner = Instance.new("UICorner")
+	iconCorner.CornerRadius = UDim.new(1, 0)
+	iconCorner.Parent = mainIcon
+	
+	local iconStroke = Instance.new("UIStroke")
+	iconStroke.Color = Color3.fromRGB(200, 180, 255)
+	iconStroke.Transparency = 0.5
+	iconStroke.Thickness = 2
+	iconStroke.Parent = mainIcon
+	
+	local iconText = Instance.new("TextLabel")
+	iconText.Parent = mainIcon
+	iconText.Size = UDim2.new(1, 0, 1, 0)
+	iconText.BackgroundTransparency = 1
+	iconText.Text = "XC"
+	iconText.TextColor3 = Color3.fromRGB(255, 255, 255)
+	iconText.TextSize = 16
+	iconText.Font = Enum.Font.GothamBlack
+
+	-- Основное окно
+	mainFrame = Instance.new("Frame")
+	mainFrame.Name = "MainFrame"
+	mainFrame.Parent = screenGui
+	mainFrame.Size = UDim2.new(0, 0, 0, 0)
+	mainFrame.Position = UDim2.new(0, 72, 0, 15)
+	mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 14)
+	mainFrame.BorderSizePixel = 0
+	mainFrame.ClipsDescendants = true
+	mainFrame.Visible = true
+	
+	local mainCorner = Instance.new("UICorner")
+	mainCorner.CornerRadius = UDim.new(0, 8)
+	mainCorner.Parent = mainFrame
+	
+	local mainStroke = Instance.new("UIStroke")
+	mainStroke.Color = Color3.fromRGB(120, 100, 180)
+	mainStroke.Transparency = 0.7
+	mainStroke.Thickness = 1.2
+	mainStroke.Parent = mainFrame
+
+	-- Заголовок
+	local titleBar = Instance.new("Frame")
+	titleBar.Parent = mainFrame
+	titleBar.Size = UDim2.new(1, 0, 0, 32)
+	titleBar.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+	titleBar.BorderSizePixel = 0
+	
+	local titleCorner = Instance.new("UICorner")
+	titleCorner.CornerRadius = UDim.new(0, 8)
+	titleCorner.Parent = titleBar
+	
+	local titleCover = Instance.new("Frame")
+	titleCover.Parent = titleBar
+	titleCover.Size = UDim2.new(1, 0, 0.5, 0)
+	titleCover.Position = UDim2.new(0, 0, 0.5, 0)
+	titleCover.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+	titleCover.BorderSizePixel = 0
+	
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Parent = titleBar
+	titleLabel.Size = UDim2.new(1, -60, 1, 0)
+	titleLabel.Position = UDim2.new(0, 12, 0, 0)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Text = "xclient v5.1 | " .. detectedExploit
+	titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	titleLabel.TextSize = 10
+	titleLabel.Font = Enum.Font.GothamBlack
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local closeButton = Instance.new("TextButton")
+	closeButton.Parent = titleBar
+	closeButton.Size = UDim2.new(0, 28, 0, 28)
+	closeButton.Position = UDim2.new(1, -32, 0, 2)
+	closeButton.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
+	closeButton.Text = "×"
+	closeButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+	closeButton.TextSize = 20
+	closeButton.Font = Enum.Font.GothamBold
+	
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(1, 0)
+	closeCorner.Parent = closeButton
+
+	-- Вкладки
+	local tabNames = {"mov", "com", "visual", "gui"}
+	local tabButtons = {}
+	local tabContainers = {}
+	
+	local tabBar = Instance.new("Frame")
+	tabBar.Parent = mainFrame
+	tabBar.Size = UDim2.new(1, 0, 0, 34)
+	tabBar.Position = UDim2.new(0, 0, 0, 33)
+	tabBar.BackgroundColor3 = Color3.fromRGB(13, 13, 17)
+	tabBar.BorderSizePixel = 0
+	
+	local tabIndicator = Instance.new("Frame")
+	tabIndicator.Parent = tabBar
+	tabIndicator.Size = UDim2.new(0.25, 0, 0, 2)
+	tabIndicator.Position = UDim2.new(0, 0, 1, -2)
+	tabIndicator.BackgroundColor3 = Color3.fromRGB(180, 140, 255)
+	tabIndicator.BorderSizePixel = 0
+	
+	local indicatorCorner = Instance.new("UICorner")
+	indicatorCorner.CornerRadius = UDim.new(1, 0)
+	indicatorCorner.Parent = tabIndicator
+	
+	for i, tabName in ipairs(tabNames) do
+		local tabButton = Instance.new("TextButton")
+		tabButton.Name = tabName
+		tabButton.Parent = tabBar
+		tabButton.Size = UDim2.new(0.25, 0, 1, 0)
+		tabButton.Position = UDim2.new((i-1) * 0.25, 0, 0, 0)
+		tabButton.BackgroundColor3 = Color3.fromRGB(13, 13, 17)
+		tabButton.Text = tabName:upper()
+		tabButton.TextColor3 = (tabName == "mov") and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(140, 140, 150)
+		tabButton.TextSize = 11
+		tabButton.Font = Enum.Font.GothamBold
+		tabButton.BorderSizePixel = 0
+		tabButton.AutoButtonColor = false
+		
+		tabButtons[tabName] = tabButton
+		
+		local container = Instance.new("ScrollingFrame")
+		container.Name = tabName .. "Container"
+		container.Parent = mainFrame
+		container.Size = UDim2.new(1, 0, 1, -68)
+		container.Position = UDim2.new(0, 0, 0, 68)
+		container.BackgroundTransparency = 1
+		container.BorderSizePixel = 0
+		container.ScrollBarThickness = 3
+		container.ScrollBarImageColor3 = Color3.fromRGB(35, 35, 42)
+		container.CanvasSize = UDim2.new(0, 0, 0, 800)
+		container.Visible = (tabName == "mov")
+		
+		local uiList = Instance.new("UIListLayout")
+		uiList.Parent = container
+		uiList.Padding = UDim.new(0, 8)
+		uiList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		
+		local uiPadding = Instance.new("UIPadding")
+		uiPadding.Parent = container
+		uiPadding.PaddingTop = UDim.new(0, 10)
+		uiPadding.PaddingLeft = UDim.new(0, 12)
+		uiPadding.PaddingRight = UDim.new(0, 12)
+		
+		tabContainers[tabName] = container
+	end
+
+	-- ============================================
+	-- ВКЛАДКА MOV
+	-- ============================================
+	local movContainer = tabContainers["mov"]
+	
+	local flightHeader = Instance.new("TextLabel")
+	flightHeader.Parent = movContainer
+	flightHeader.Size = UDim2.new(1, 0, 0, 22)
+	flightHeader.BackgroundTransparency = 1
+	flightHeader.Text = "✦ МАГИЧЕСКИЙ ПОЛЕТ"
+	flightHeader.TextColor3 = Color3.fromRGB(200, 170, 255)
+	flightHeader.TextSize = 11
+	flightHeader.Font = Enum.Font.GothamBold
+	flightHeader.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local flightToggle = Instance.new("TextButton")
+	flightToggle.Name = "FlightToggle"
+	flightToggle.Parent = movContainer
+	flightToggle.Size = UDim2.new(1, 0, 0, 42)
+	flightToggle.BackgroundColor3 = Color3.fromRGB(80, 60, 140)
+	flightToggle.Text = "ВКЛЮЧИТЬ ПОЛЕТ"
+	flightToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	flightToggle.TextSize = 13
+	flightToggle.Font = Enum.Font.GothamSemibold
+	flightToggle.AutoButtonColor = false
+	
+	local ftCorner = Instance.new("UICorner")
+	ftCorner.CornerRadius = UDim.new(0, 6)
+	ftCorner.Parent = flightToggle
+	
+	local speedLabel = Instance.new("TextLabel")
+	speedLabel.Parent = movContainer
+	speedLabel.Size = UDim2.new(1, 0, 0, 18)
+	speedLabel.BackgroundTransparency = 1
+	speedLabel.Text = "Скорость полета: " .. FlightSpeed
+	speedLabel.TextColor3 = Color3.fromRGB(170, 170, 180)
+	speedLabel.TextSize = 11
+	speedLabel.Font = Enum.Font.Gotham
+	speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local speedSlider = Instance.new("TextBox")
+	speedSlider.Parent = movContainer
+	speedSlider.Size = UDim2.new(1, 0, 0, 30)
+	speedSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+	speedSlider.Text = tostring(FlightSpeed)
+	speedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	speedSlider.TextSize = 13
+	speedSlider.Font = Enum.Font.Gotham
+	speedSlider.PlaceholderText = "Скорость (1-150)"
+	
+	local ssCorner = Instance.new("UICorner")
+	ssCorner.CornerRadius = UDim.new(0, 5)
+	ssCorner.Parent = speedSlider
+	
+	speedSlider.FocusLost:Connect(function()
+		local num = tonumber(speedSlider.Text)
+		if num and num > 0 and num <= 150 then
+			FlightSpeed = num
+			speedLabel.Text = "Скорость полета: " .. num
+			createNotification("Скорость: " .. num .. " studs/s", 2)
+		else
+			speedSlider.Text = tostring(FlightSpeed)
+		end
+	end)
+
+	local resolverHeader = Instance.new("TextLabel")
+	resolverHeader.Parent = movContainer
+	resolverHeader.Size = UDim2.new(1, 0, 0, 22)
+	resolverHeader.BackgroundTransparency = 1
+	resolverHeader.Text = "✦ MAGIC RESOLVER"
+	resolverHeader.TextColor3 = Color3.fromRGB(255, 170, 80)
+	resolverHeader.TextSize = 11
+	resolverHeader.Font = Enum.Font.GothamBold
+	resolverHeader.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local resolverToggle = Instance.new("TextButton")
+	resolverToggle.Parent = movContainer
+	resolverToggle.Size = UDim2.new(1, 0, 0, 38)
+	resolverToggle.BackgroundColor3 = MagicResolverEnabled and Color3.fromRGB(160, 90, 30) or Color3.fromRGB(40, 40, 48)
+	resolverToggle.Text = MagicResolverEnabled and "RESOLVER: АКТИВЕН" or "RESOLVER: ВЫКЛЮЧЕН"
+	resolverToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	resolverToggle.TextSize = 12
+	resolverToggle.Font = Enum.Font.GothamSemibold
+	resolverToggle.AutoButtonColor = false
+	
+	local rtCorner = Instance.new("UICorner")
+	rtCorner.CornerRadius = UDim.new(0, 6)
+	rtCorner.Parent = resolverToggle
+
+	local effectsToggle = Instance.new("TextButton")
+	effectsToggle.Parent = movContainer
+	effectsToggle.Size = UDim2.new(1, 0, 0, 38)
+	effectsToggle.BackgroundColor3 = FlightEffectsEnabled and Color3.fromRGB(60, 100, 140) or Color3.fromRGB(40, 40, 48)
+	effectsToggle.Text = FlightEffectsEnabled and "ЭФФЕКТЫ: ВКЛ" or "ЭФФЕКТЫ: ВЫКЛ"
+	effectsToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	effectsToggle.TextSize = 12
+	effectsToggle.Font = Enum.Font.GothamSemibold
+	effectsToggle.AutoButtonColor = false
+	
+	local etCorner = Instance.new("UICorner")
+	etCorner.CornerRadius = UDim.new(0, 6)
+	etCorner.Parent = effectsToggle
+	
+	local dashToggle = Instance.new("TextButton")
+	dashToggle.Parent = movContainer
+	dashToggle.Size = UDim2.new(1, 0, 0, 38)
+	dashToggle.BackgroundColor3 = FlightDashEnabled and Color3.fromRGB(60, 100, 140) or Color3.fromRGB(40, 40, 48)
+	dashToggle.Text = FlightDashEnabled and "РЫВКИ (SHIFT): ВКЛ" or "РЫВКИ: ВЫКЛ"
+	dashToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	dashToggle.TextSize = 12
+	dashToggle.Font = Enum.Font.GothamSemibold
+	dashToggle.AutoButtonColor = false
+	
+	local dtCorner = Instance.new("UICorner")
+	dtCorner.CornerRadius = UDim.new(0, 6)
+	dtCorner.Parent = dashToggle
+
+	-- SPEED Секция
+	local speedHeader = Instance.new("TextLabel")
+	speedHeader.Parent = movContainer
+	speedHeader.Size = UDim2.new(1, 0, 0, 22)
+	speedHeader.BackgroundTransparency = 1
+	speedHeader.Text = "✦ SPEED ФУНКЦИИ"
+	speedHeader.TextColor3 = Color3.fromRGB(255, 200, 100)
+	speedHeader.TextSize = 11
+	speedHeader.Font = Enum.Font.GothamBold
+	speedHeader.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local holdHint = Instance.new("TextLabel")
+	holdHint.Parent = movContainer
+	holdHint.Size = UDim2.new(1, 0, 0, 16)
+	holdHint.BackgroundTransparency = 1
+	holdHint.Text = "Зажми кнопку для настроек"
+	holdHint.TextColor3 = Color3.fromRGB(120, 120, 140)
+	holdHint.TextSize = 9
+	holdHint.Font = Enum.Font.Gotham
+	holdHint.TextXAlignment = Enum.TextXAlignment.Left
+
+	local collisionBtn = Instance.new("TextButton")
+	collisionBtn.Name = "CollisionBoost"
+	collisionBtn.Parent = movContainer
+	collisionBtn.Size = UDim2.new(1, 0, 0, 40)
+	collisionBtn.BackgroundColor3 = CollisionBoostEnabled and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(35, 35, 42)
+	collisionBtn.Text = "COLLISION BOOST: " .. (CollisionBoostEnabled and "ON" or "OFF")
+	collisionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	collisionBtn.TextSize = 12
+	collisionBtn.Font = Enum.Font.GothamSemibold
+	collisionBtn.AutoButtonColor = false
+	
+	local cbCorner = Instance.new("UICorner")
+	cbCorner.CornerRadius = UDim.new(0, 6)
+	cbCorner.Parent = collisionBtn
+
+	local miniJumpBtn = Instance.new("TextButton")
+	miniJumpBtn.Name = "MiniJump"
+	miniJumpBtn.Parent = movContainer
+	miniJumpBtn.Size = UDim2.new(1, 0, 0, 40)
+	miniJumpBtn.BackgroundColor3 = MiniJumpEnabled and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(35, 35, 42)
+	miniJumpBtn.Text = "MINIJUMP: " .. (MiniJumpEnabled and "ON" or "OFF")
+	miniJumpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	miniJumpBtn.TextSize = 12
+	miniJumpBtn.Font = Enum.Font.GothamSemibold
+	miniJumpBtn.AutoButtonColor = false
+	
+	local mjCorner = Instance.new("UICorner")
+	mjCorner.CornerRadius = UDim.new(0, 6)
+	mjCorner.Parent = miniJumpBtn
+
+	local selfPushBtn = Instance.new("TextButton")
+	selfPushBtn.Name = "SelfPush"
+	selfPushBtn.Parent = movContainer
+	selfPushBtn.Size = UDim2.new(1, 0, 0, 40)
+	selfPushBtn.BackgroundColor3 = SelfPushEnabled and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(35, 35, 42)
+	selfPushBtn.Text = "SELF PUSH: " .. (SelfPushEnabled and "ON" or "OFF")
+	selfPushBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	selfPushBtn.TextSize = 12
+	selfPushBtn.Font = Enum.Font.GothamSemibold
+	selfPushBtn.AutoButtonColor = false
+	
+	local spCorner = Instance.new("UICorner")
+	spCorner.CornerRadius = UDim.new(0, 6)
+	spCorner.Parent = selfPushBtn
+
+	-- ============================================
+	-- ВКЛАДКА COM (DODGE)
+	-- ============================================
+	local comContainer = tabContainers["com"]
+	
+	local dodgeHeader = Instance.new("TextLabel")
+	dodgeHeader.Parent = comContainer
+	dodgeHeader.Size = UDim2.new(1, 0, 0, 22)
+	dodgeHeader.BackgroundTransparency = 1
+	dodgeHeader.Text = "✦ DODGE СИСТЕМА"
+	dodgeHeader.TextColor3 = Color3.fromRGB(100, 200, 255)
+	dodgeHeader.TextSize = 11
+	dodgeHeader.Font = Enum.Font.GothamBold
+	dodgeHeader.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local dodgeToggle = Instance.new("TextButton")
+	dodgeToggle.Name = "DodgeToggle"
+	dodgeToggle.Parent = comContainer
+	dodgeToggle.Size = UDim2.new(1, 0, 0, 40)
+	dodgeToggle.BackgroundColor3 = DodgeEnabled and Color3.fromRGB(40, 100, 180) or Color3.fromRGB(40, 40, 48)
+	dodgeToggle.Text = "DODGE: " .. (DodgeEnabled and "ON" or "OFF")
+	dodgeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	dodgeToggle.TextSize = 12
+	dodgeToggle.Font = Enum.Font.GothamSemibold
+	dodgeToggle.AutoButtonColor = false
+	
+	local dodgeCorner = Instance.new("UICorner")
+	dodgeCorner.CornerRadius = UDim.new(0, 6)
+	dodgeCorner.Parent = dodgeToggle
+	
+	local dodgeInfo = Instance.new("TextLabel")
+	dodgeInfo.Parent = comContainer
+	dodgeInfo.Size = UDim2.new(1, 0, 0, 60)
+	dodgeInfo.BackgroundTransparency = 1
+	dodgeInfo.Text = "Радиус: " .. DodgeRadius .. " studs\nКулдаун: " .. DodgeCooldown .. "s\nСила: " .. DodgeBaseForce .. " + скорость врага × " .. DodgeSpeedMultiplier
+	dodgeInfo.TextColor3 = Color3.fromRGB(150, 150, 170)
+	dodgeInfo.TextSize = 10
+	dodgeInfo.Font = Enum.Font.Gotham
+	dodgeInfo.TextXAlignment = Enum.TextXAlignment.Left
+	dodgeInfo.TextWrapped = true
+	
+	-- Dodge настройки (окно)
+	local dodgeSettingsWindow, dodgeSettingsContent = createSettingsWindow(screenGui, "DODGE")
+	
+	-- Радиус
+	local dodgeRadiusLabel = Instance.new("TextLabel")
+	dodgeRadiusLabel.Parent = dodgeSettingsContent
+	dodgeRadiusLabel.Size = UDim2.new(1, 0, 0, 18)
+	dodgeRadiusLabel.BackgroundTransparency = 1
+	dodgeRadiusLabel.Text = "Радиус: " .. DodgeRadius .. " studs"
+	dodgeRadiusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	dodgeRadiusLabel.TextSize = 11
+	dodgeRadiusLabel.Font = Enum.Font.Gotham
+	
+	local dodgeRadiusSlider = Instance.new("TextBox")
+	dodgeRadiusSlider.Parent = dodgeSettingsContent
+	dodgeRadiusSlider.Size = UDim2.new(1, 0, 0, 30)
+	dodgeRadiusSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	dodgeRadiusSlider.Text = tostring(DodgeRadius)
+	dodgeRadiusSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	dodgeRadiusSlider.TextSize = 13
+	dodgeRadiusSlider.Font = Enum.Font.Gotham
+	dodgeRadiusSlider.PlaceholderText = "Радиус (1-50)"
+	
+	local drCorner = Instance.new("UICorner")
+	drCorner.CornerRadius = UDim.new(0, 5)
+	drCorner.Parent = dodgeRadiusSlider
+	
+	dodgeRadiusSlider.FocusLost:Connect(function()
+		local num = tonumber(dodgeRadiusSlider.Text)
+		if num and num >= 1 and num <= 50 then
+			DodgeRadius = num
+			dodgeRadiusLabel.Text = "Радиус: " .. num .. " studs"
+			dodgeInfo.Text = "Радиус: " .. DodgeRadius .. " studs\nКулдаун: " .. DodgeCooldown .. "s\nСила: " .. DodgeBaseForce .. " + скорость врага × " .. DodgeSpeedMultiplier
+		else
+			dodgeRadiusSlider.Text = tostring(DodgeRadius)
+		end
+	end)
+	
+	-- Кулдаун
+	local dodgeCooldownLabel = Instance.new("TextLabel")
+	dodgeCooldownLabel.Parent = dodgeSettingsContent
+	dodgeCooldownLabel.Size = UDim2.new(1, 0, 0, 18)
+	dodgeCooldownLabel.BackgroundTransparency = 1
+	dodgeCooldownLabel.Text = "Кулдаун: " .. DodgeCooldown .. "s"
+	dodgeCooldownLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	dodgeCooldownLabel.TextSize = 11
+	dodgeCooldownLabel.Font = Enum.Font.Gotham
+	
+	local dodgeCooldownSlider = Instance.new("TextBox")
+	dodgeCooldownSlider.Parent = dodgeSettingsContent
+	dodgeCooldownSlider.Size = UDim2.new(1, 0, 0, 30)
+	dodgeCooldownSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	dodgeCooldownSlider.Text = tostring(DodgeCooldown)
+	dodgeCooldownSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	dodgeCooldownSlider.TextSize = 13
+	dodgeCooldownSlider.Font = Enum.Font.Gotham
+	dodgeCooldownSlider.PlaceholderText = "Кулдаун (0.1-3)"
+	
+	local dcCorner = Instance.new("UICorner")
+	dcCorner.CornerRadius = UDim.new(0, 5)
+	dcCorner.Parent = dodgeCooldownSlider
+	
+	dodgeCooldownSlider.FocusLost:Connect(function()
+		local num = tonumber(dodgeCooldownSlider.Text)
+		if num and num >= 0.1 and num <= 3 then
+			DodgeCooldown = num
+			dodgeCooldownLabel.Text = "Кулдаун: " .. num .. "s"
+			dodgeInfo.Text = "Радиус: " .. DodgeRadius .. " studs\nКулдаун: " .. DodgeCooldown .. "s\nСила: " .. DodgeBaseForce .. " + скорость врага × " .. DodgeSpeedMultiplier
+		else
+			dodgeCooldownSlider.Text = tostring(DodgeCooldown)
+		end
+	end)
+	
+	-- Сила
+	local dodgeForceLabel = Instance.new("TextLabel")
+	dodgeForceLabel.Parent = dodgeSettingsContent
+	dodgeForceLabel.Size = UDim2.new(1, 0, 0, 18)
+	dodgeForceLabel.BackgroundTransparency = 1
+	dodgeForceLabel.Text = "Базовая сила: " .. DodgeBaseForce
+	dodgeForceLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	dodgeForceLabel.TextSize = 11
+	dodgeForceLabel.Font = Enum.Font.Gotham
+	
+	local dodgeForceSlider = Instance.new("TextBox")
+	dodgeForceSlider.Parent = dodgeSettingsContent
+	dodgeForceSlider.Size = UDim2.new(1, 0, 0, 30)
+	dodgeForceSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	dodgeForceSlider.Text = tostring(DodgeBaseForce)
+	dodgeForceSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	dodgeForceSlider.TextSize = 13
+	dodgeForceSlider.Font = Enum.Font.Gotham
+	dodgeForceSlider.PlaceholderText = "Сила (5-100)"
+	
+	local dfCorner = Instance.new("UICorner")
+	dfCorner.CornerRadius = UDim.new(0, 5)
+	dfCorner.Parent = dodgeForceSlider
+	
+	dodgeForceSlider.FocusLost:Connect(function()
+		local num = tonumber(dodgeForceSlider.Text)
+		if num and num >= 5 and num <= 100 then
+			DodgeBaseForce = num
+			dodgeForceLabel.Text = "Базовая сила: " .. num
+			dodgeInfo.Text = "Радиус: " .. DodgeRadius .. " studs\nКулдаун: " .. DodgeCooldown .. "s\nСила: " .. DodgeBaseForce .. " + скорость врага × " .. DodgeSpeedMultiplier
+		else
+			dodgeForceSlider.Text = tostring(DodgeBaseForce)
+		end
+	end)
+	
+	-- Множитель скорости
+	local dodgeMultLabel = Instance.new("TextLabel")
+	dodgeMultLabel.Parent = dodgeSettingsContent
+	dodgeMultLabel.Size = UDim2.new(1, 0, 0, 18)
+	dodgeMultLabel.BackgroundTransparency = 1
+	dodgeMultLabel.Text = "Множитель скорости: ×" .. DodgeSpeedMultiplier
+	dodgeMultLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	dodgeMultLabel.TextSize = 11
+	dodgeMultLabel.Font = Enum.Font.Gotham
+	
+	local dodgeMultSlider = Instance.new("TextBox")
+	dodgeMultSlider.Parent = dodgeSettingsContent
+	dodgeMultSlider.Size = UDim2.new(1, 0, 0, 30)
+	dodgeMultSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	dodgeMultSlider.Text = tostring(DodgeSpeedMultiplier)
+	dodgeMultSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	dodgeMultSlider.TextSize = 13
+	dodgeMultSlider.Font = Enum.Font.Gotham
+	dodgeMultSlider.PlaceholderText = "Множитель (0.1-5)"
+	
+	local dmCorner = Instance.new("UICorner")
+	dmCorner.CornerRadius = UDim.new(0, 5)
+	dmCorner.Parent = dodgeMultSlider
+	
+	dodgeMultSlider.FocusLost:Connect(function()
+		local num = tonumber(dodgeMultSlider.Text)
+		if num and num >= 0.1 and num <= 5 then
+			DodgeSpeedMultiplier = num
+			dodgeMultLabel.Text = "Множитель скорости: ×" .. num
+			dodgeInfo.Text = "Радиус: " .. DodgeRadius .. " studs\nКулдаун: " .. DodgeCooldown .. "s\nСила: " .. DodgeBaseForce .. " + скорость врага × " .. DodgeSpeedMultiplier
+		else
+			dodgeMultSlider.Text = tostring(DodgeSpeedMultiplier)
+		end
+	end)
+
+	-- ============================================
+	-- ВКЛАДКА VISUAL
+	-- ============================================
+	local visContainer = tabContainers["visual"]
+	
+	local visPlaceholder = Instance.new("TextLabel")
+	visPlaceholder.Parent = visContainer
+	visPlaceholder.Size = UDim2.new(1, 0, 0, 80)
+	visPlaceholder.BackgroundTransparency = 1
+	visPlaceholder.Text = "VISUAL\n(в разработке)"
+	visPlaceholder.TextColor3 = Color3.fromRGB(100, 100, 120)
+	visPlaceholder.TextSize = 13
+	visPlaceholder.Font = Enum.Font.Gotham
+	visPlaceholder.TextWrapped = true
+
+	-- ============================================
+	-- ВКЛАДКА GUI
+	-- ============================================
+	local guiContainer = tabContainers["gui"]
+	
+	local guiLabel = Instance.new("TextLabel")
+	guiLabel.Parent = guiContainer
+	guiLabel.Size = UDim2.new(1, 0, 0, 22)
+	guiLabel.BackgroundTransparency = 1
+	guiLabel.Text = "✦ СТИЛЬ ИНТЕРФЕЙСА"
+	guiLabel.TextColor3 = Color3.fromRGB(170, 170, 190)
+	guiLabel.TextSize = 11
+	guiLabel.Font = Enum.Font.GothamBold
+	guiLabel.TextXAlignment = Enum.TextXAlignment.Left
+	
+	local csBtn = Instance.new("TextButton")
+	csBtn.Parent = guiContainer
+	csBtn.Size = UDim2.new(1, 0, 0, 40)
+	csBtn.BackgroundColor3 = GUIStyle == "CS" and Color3.fromRGB(60, 100, 160) or Color3.fromRGB(30, 30, 38)
+	csBtn.Text = "CS (Современный)"
+	csBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	csBtn.TextSize = 12
+	csBtn.Font = Enum.Font.GothamSemibold
+	csBtn.AutoButtonColor = false
+	
+	local csBtnCorner = Instance.new("UICorner")
+	csBtnCorner.CornerRadius = UDim.new(0, 6)
+	csBtnCorner.Parent = csBtn
+	
+	local panelBtn = Instance.new("TextButton")
+	panelBtn.Parent = guiContainer
+	panelBtn.Size = UDim2.new(1, 0, 0, 40)
+	panelBtn.BackgroundColor3 = GUIStyle == "Panel" and Color3.fromRGB(60, 100, 160) or Color3.fromRGB(30, 30, 38)
+	panelBtn.Text = "Panel (Классический)"
+	panelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	panelBtn.TextSize = 12
+	panelBtn.Font = Enum.Font.GothamSemibold
+	panelBtn.AutoButtonColor = false
+	
+	local panelBtnCorner = Instance.new("UICorner")
+	panelBtnCorner.CornerRadius = UDim.new(0, 6)
+	panelBtnCorner.Parent = panelBtn
+
+	-- Фрейм уведомлений
+	notificationFrame = Instance.new("Frame")
+	notificationFrame.Name = "Notifications"
+	notificationFrame.Parent = screenGui
+	notificationFrame.Size = UDim2.new(0, 300, 0, 300)
+	notificationFrame.Position = UDim2.new(0.5, -150, 1, -10)
+	notificationFrame.BackgroundTransparency = 1
+	notificationFrame.BorderSizePixel = 0
+
+	-- ============================================
+	-- ФУНКЦИИ ПЕРЕКЛЮЧЕНИЯ
+	-- ============================================
+	local function switchTab(tabName)
+		for name, container in pairs(tabContainers) do
+			container.Visible = (name == tabName)
+		end
+		for name, button in pairs(tabButtons) do
+			button.TextColor3 = (name == tabName) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(140, 140, 150)
+		end
+		
+		local idx = table.find(tabNames, tabName)
+		if idx then
+			TweenService:Create(tabIndicator, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = UDim2.new((idx-1) * 0.25, 0, 1, -2)
+			}):Play()
+		end
+	end
+	
+	for name, button in pairs(tabButtons) do
+		button.MouseButton1Click:Connect(function() switchTab(name) end)
+	end
+
+	local function toggleMenu()
+		menuOpen = not menuOpen
+		
+		if not mainFrame or not mainIcon then
+			-- Восстанавливаем ссылки если потерялись
+			pcall(function()
+				local gui = player.PlayerGui:FindFirstChild("FlightSystemGUI")
+				if gui then
+					mainIcon = gui:FindFirstChild("MainIcon")
+					mainFrame = gui:FindFirstChild("MainFrame")
+				end
+			end)
+		end
+		
+		if not mainFrame or not mainIcon then return end
+		
+		if menuOpen then
+			mainFrame.Visible = true
+			TweenService:Create(mainFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = UDim2.new(0, 280, 0, 420)
+			}):Play()
+			TweenService:Create(mainIcon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundTransparency = 0
+			}):Play()
+		else
+			TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+				Size = UDim2.new(0, 0, 0, 0)
+			}):Play()
+			TweenService:Create(mainIcon, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundTransparency = 0.15
+			}):Play()
+		end
+	end
+	
+	mainIcon.MouseButton1Click:Connect(function()
+		toggleMenu()
+	end)
+	
+	mainIcon.Activated:Connect(function()
+		if not menuOpen then toggleMenu() end
+	end)
+	
+	closeButton.MouseButton1Click:Connect(function()
+		if menuOpen then toggleMenu() end
+	end)
+
+	-- ============================================
+	-- ОБРАБОТЧИКИ КНОПОК
+	-- ============================================
+	
+	flightToggle.MouseButton1Click:Connect(function()
+		isFlying = not isFlying
+		if isFlying then
+			startFlight()
+			createNotification("Полет: ВКЛЮЧЕН", 2)
+		else
+			stopFlight()
+			createNotification("Полет: ВЫКЛЮЧЕН", 2)
+		end
+		flightToggle.Text = isFlying and "ОТКЛЮЧИТЬ ПОЛЕТ" or "ВКЛЮЧИТЬ ПОЛЕТ"
+		flightToggle.BackgroundColor3 = isFlying and Color3.fromRGB(180, 60, 60) or Color3.fromRGB(80, 60, 140)
+	end)
+	
+	resolverToggle.MouseButton1Click:Connect(function()
+		MagicResolverEnabled = not MagicResolverEnabled
+		resolverToggle.Text = MagicResolverEnabled and "RESOLVER: АКТИВЕН" or "RESOLVER: ВЫКЛЮЧЕН"
+		resolverToggle.BackgroundColor3 = MagicResolverEnabled and Color3.fromRGB(160, 90, 30) or Color3.fromRGB(40, 40, 48)
+		createNotification("Magic Resolver: " .. (MagicResolverEnabled and "ON" or "OFF"), 2)
+	end)
+	
+	effectsToggle.MouseButton1Click:Connect(function()
+		FlightEffectsEnabled = not FlightEffectsEnabled
+		effectsToggle.Text = FlightEffectsEnabled and "ЭФФЕКТЫ: ВКЛ" or "ЭФФЕКТЫ: ВЫКЛ"
+		effectsToggle.BackgroundColor3 = FlightEffectsEnabled and Color3.fromRGB(60, 100, 140) or Color3.fromRGB(40, 40, 48)
+		createNotification("Эффекты: " .. (FlightEffectsEnabled and "ON" or "OFF"), 2)
+	end)
+	
+	dashToggle.MouseButton1Click:Connect(function()
+		FlightDashEnabled = not FlightDashEnabled
+		dashToggle.Text = FlightDashEnabled and "РЫВКИ (SHIFT): ВКЛ" or "РЫВКИ: ВЫКЛ"
+		dashToggle.BackgroundColor3 = FlightDashEnabled and Color3.fromRGB(60, 100, 140) or Color3.fromRGB(40, 40, 48)
+		createNotification("Рывки: " .. (FlightDashEnabled and "ON" or "OFF"), 2)
+	end)
+
+	-- SPEED функции с удержанием
+	local function setupHoldButton(button, settingsWindow, toggleCallback)
+		local holdStart = 0
+		local isButtonHeld = false
+		local longPressTriggered = false
+		
+		button.MouseButton1Down:Connect(function()
+			holdStart = tick()
+			isButtonHeld = true
+			longPressTriggered = false
+			
+			spawnTask(function()
+				while isButtonHeld and not longPressTriggered do
+					if tick() - holdStart >= holdThreshold then
+						longPressTriggered = true
+						settingsWindow.Visible = true
+						settingsWindow.Size = UDim2.new(0, 0, 0, 0)
+						TweenService:Create(settingsWindow, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+							Size = UDim2.new(0, 260, 0, 180)
+						}):Play()
+						break
+					end
+					wait(0.05)
+				end
+			end)
+		end)
+		
+		button.MouseButton1Up:Connect(function()
+			local holdDuration = tick() - holdStart
+			isButtonHeld = false
+			
+			if not longPressTriggered and holdDuration < holdThreshold then
+				toggleCallback()
+			end
+		end)
+		
+		button.Activated:Connect(function()
+			toggleCallback()
+		end)
+	end
+
+	-- Collision Boost окно
+	local colSettingsWindow, colSettingsContent = createSettingsWindow(screenGui, "COLLISION BOOST")
+	
+	local colRadiusLabel = Instance.new("TextLabel")
+	colRadiusLabel.Parent = colSettingsContent
+	colRadiusLabel.Size = UDim2.new(1, 0, 0, 18)
+	colRadiusLabel.BackgroundTransparency = 1
+	colRadiusLabel.Text = "Радиус: " .. CollisionBoostRadius .. " studs"
+	colRadiusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	colRadiusLabel.TextSize = 11
+	colRadiusLabel.Font = Enum.Font.Gotham
+	
+	local colRadiusSlider = Instance.new("TextBox")
+	colRadiusSlider.Parent = colSettingsContent
+	colRadiusSlider.Size = UDim2.new(1, 0, 0, 30)
+	colRadiusSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	colRadiusSlider.Text = tostring(CollisionBoostRadius)
+	colRadiusSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	colRadiusSlider.TextSize = 13
+	colRadiusSlider.Font = Enum.Font.Gotham
+	colRadiusSlider.PlaceholderText = "Радиус (1-50)"
+	
+	local crCorner = Instance.new("UICorner")
+	crCorner.CornerRadius = UDim.new(0, 5)
+	crCorner.Parent = colRadiusSlider
+	
+	colRadiusSlider.FocusLost:Connect(function()
+		local num = tonumber(colRadiusSlider.Text)
+		if num and num >= 1 and num <= 50 then
+			CollisionBoostRadius = num
+			colRadiusLabel.Text = "Радиус: " .. num .. " studs"
+		else
+			colRadiusSlider.Text = tostring(CollisionBoostRadius)
+		end
+	end)
+	
+	local colSpeedLabel = Instance.new("TextLabel")
+	colSpeedLabel.Parent = colSettingsContent
+	colSpeedLabel.Size = UDim2.new(1, 0, 0, 18)
+	colSpeedLabel.BackgroundTransparency = 1
+	colSpeedLabel.Text = "Скорость буста: " .. CollisionBoostSpeed .. " studs/s"
+	colSpeedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	colSpeedLabel.TextSize = 11
+	colSpeedLabel.Font = Enum.Font.Gotham
+	
+	local colSpeedSlider = Instance.new("TextBox")
+	colSpeedSlider.Parent = colSettingsContent
+	colSpeedSlider.Size = UDim2.new(1, 0, 0, 30)
+	colSpeedSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	colSpeedSlider.Text = tostring(CollisionBoostSpeed)
+	colSpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	colSpeedSlider.TextSize = 13
+	colSpeedSlider.Font = Enum.Font.Gotham
+	colSpeedSlider.PlaceholderText = "Скорость (1-200)"
+	
+	local csCorner = Instance.new("UICorner")
+	csCorner.CornerRadius = UDim.new(0, 5)
+	csCorner.Parent = colSpeedSlider
+	
+	colSpeedSlider.FocusLost:Connect(function()
+		local num = tonumber(colSpeedSlider.Text)
+		if num and num >= 1 and num <= 200 then
+			CollisionBoostSpeed = num
+			colSpeedLabel.Text = "Скорость буста: " .. num .. " studs/s"
+		else
+			colSpeedSlider.Text = tostring(CollisionBoostSpeed)
+		end
+	end)
+
+	setupHoldButton(collisionBtn, colSettingsWindow, function()
+		CollisionBoostEnabled = not CollisionBoostEnabled
+		collisionBtn.Text = "COLLISION BOOST: " .. (CollisionBoostEnabled and "ON" or "OFF")
+		collisionBtn.BackgroundColor3 = CollisionBoostEnabled and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(35, 35, 42)
+		if CollisionBoostEnabled then startCollisionBoost() end
+		createNotification("Collision Boost: " .. (CollisionBoostEnabled and "ON" or "OFF"), 2)
+	end)
+
+	-- MiniJump окно
+	local mjSettingsWindow, mjSettingsContent = createSettingsWindow(screenGui, "MINIJUMP")
+	
+	local mjSpeedLabel = Instance.new("TextLabel")
+	mjSpeedLabel.Parent = mjSettingsContent
+	mjSpeedLabel.Size = UDim2.new(1, 0, 0, 18)
+	mjSpeedLabel.BackgroundTransparency = 1
+	mjSpeedLabel.Text = "Скорость: " .. MiniJumpSpeed .. " studs/s"
+	mjSpeedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	mjSpeedLabel.TextSize = 11
+	mjSpeedLabel.Font = Enum.Font.Gotham
+	
+	local mjSpeedSlider = Instance.new("TextBox")
+	mjSpeedSlider.Parent = mjSettingsContent
+	mjSpeedSlider.Size = UDim2.new(1, 0, 0, 30)
+	mjSpeedSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	mjSpeedSlider.Text = tostring(MiniJumpSpeed)
+	mjSpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	mjSpeedSlider.TextSize = 13
+	mjSpeedSlider.Font = Enum.Font.Gotham
+	mjSpeedSlider.PlaceholderText = "Скорость (1-100)"
+	
+	local msCorner = Instance.new("UICorner")
+	msCorner.CornerRadius = UDim.new(0, 5)
+	msCorner.Parent = mjSpeedSlider
+	
+	mjSpeedSlider.FocusLost:Connect(function()
+		local num = tonumber(mjSpeedSlider.Text)
+		if num and num >= 1 and num <= 100 then
+			MiniJumpSpeed = num
+			mjSpeedLabel.Text = "Скорость: " .. num .. " studs/s"
+		else
+			mjSpeedSlider.Text = tostring(MiniJumpSpeed)
+		end
+	end)
+
+	setupHoldButton(miniJumpBtn, mjSettingsWindow, function()
+		MiniJumpEnabled = not MiniJumpEnabled
+		miniJumpBtn.Text = "MINIJUMP: " .. (MiniJumpEnabled and "ON" or "OFF")
+		miniJumpBtn.BackgroundColor3 = MiniJumpEnabled and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(35, 35, 42)
+		if MiniJumpEnabled then startMiniJump() end
+		createNotification("MiniJump: " .. (MiniJumpEnabled and "ON" or "OFF"), 2)
+	end)
+
+	-- Self Push окно
+	local spSettingsWindow, spSettingsContent = createSettingsWindow(screenGui, "SELF PUSH")
+	
+	local spSpeedLabel = Instance.new("TextLabel")
+	spSpeedLabel.Parent = spSettingsContent
+	spSpeedLabel.Size = UDim2.new(1, 0, 0, 18)
+	spSpeedLabel.BackgroundTransparency = 1
+	spSpeedLabel.Text = "Сила удара: " .. SelfPushSpeed .. " studs/s"
+	spSpeedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	spSpeedLabel.TextSize = 11
+	spSpeedLabel.Font = Enum.Font.Gotham
+	
+	local spSpeedSlider = Instance.new("TextBox")
+	spSpeedSlider.Parent = spSettingsContent
+	spSpeedSlider.Size = UDim2.new(1, 0, 0, 30)
+	spSpeedSlider.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	spSpeedSlider.Text = tostring(SelfPushSpeed)
+	spSpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+	spSpeedSlider.TextSize = 13
+	spSpeedSlider.Font = Enum.Font.Gotham
+	spSpeedSlider.PlaceholderText = "Сила (1-300)"
+	
+	local spCorner2 = Instance.new("UICorner")
+	spCorner2.CornerRadius = UDim.new(0, 5)
+	spCorner2.Parent = spSpeedSlider
+	
+	spSpeedSlider.FocusLost:Connect(function()
+		local num = tonumber(spSpeedSlider.Text)
+		if num and num >= 1 and num <= 300 then
+			SelfPushSpeed = num
+			spSpeedLabel.Text = "Сила удара: " .. num .. " studs/s"
+		else
+			spSpeedSlider.Text = tostring(SelfPushSpeed)
+		end
+	end)
+
+	setupHoldButton(selfPushBtn, spSettingsWindow, function()
+		SelfPushEnabled = not SelfPushEnabled
+		selfPushBtn.Text = "SELF PUSH: " .. (SelfPushEnabled and "ON" or "OFF")
+		selfPushBtn.BackgroundColor3 = SelfPushEnabled and Color3.fromRGB(60, 130, 60) or Color3.fromRGB(35, 35, 42)
+		if SelfPushEnabled then startSelfPush() end
+		createNotification("Self Push: " .. (SelfPushEnabled and "ON" or "OFF"), 2)
+	end)
+
+	-- Dodge кнопка
+	local function setupDodgeHoldButton(button, settingsWindow, toggleCallback)
+		local holdStart = 0
+		local isButtonHeld = false
+		local longPressTriggered = false
+		
+		button.MouseButton1Down:Connect(function()
+			holdStart = tick()
+			isButtonHeld = true
+			longPressTriggered = false
+			
+			spawnTask(function()
+				while isButtonHeld and not longPressTriggered do
+					if tick() - holdStart >= holdThreshold then
+						longPressTriggered = true
+						settingsWindow.Visible = true
+						settingsWindow.Size = UDim2.new(0, 0, 0, 0)
+						TweenService:Create(settingsWindow, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+							Size = UDim2.new(0, 260, 0, 180)
+						}):Play()
+						break
+					end
+					wait(0.05)
+				end
+			end)
+		end)
+		
+		button.MouseButton1Up:Connect(function()
+			local holdDuration = tick() - holdStart
+			isButtonHeld = false
+			
+			if not longPressTriggered and holdDuration < holdThreshold then
+				toggleCallback()
+			end
+		end)
+		
+		button.Activated:Connect(function()
+			toggleCallback()
+		end)
+	end
+
+	setupDodgeHoldButton(dodgeToggle, dodgeSettingsWindow, function()
+		DodgeEnabled = not DodgeEnabled
+		dodgeToggle.Text = "DODGE: " .. (DodgeEnabled and "ON" or "OFF")
+		dodgeToggle.BackgroundColor3 = DodgeEnabled and Color3.fromRGB(40, 100, 180) or Color3.fromRGB(40, 40, 48)
+		createNotification("Dodge: " .. (DodgeEnabled and "ON" or "OFF"), 2)
+	end)
+
+	-- Стили GUI
+	csBtn.MouseButton1Click:Connect(function()
+		GUIStyle = "CS"
+		csBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 160)
+		panelBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+		createNotification("GUI: CS Style", 1.5)
+	end)
+	
+	panelBtn.MouseButton1Click:Connect(function()
+		GUIStyle = "Panel"
+		panelBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 160)
+		csBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+		createNotification("GUI: Panel Style", 1.5)
+	end)
+
+	return {
+		gui = screenGui,
+		notificationFrame = notificationFrame,
+		updateFlightButton = function(state)
+			flightToggle.Text = state and "ОТКЛЮЧИТЬ ПОЛЕТ" or "ВКЛЮЧИТЬ ПОЛЕТ"
+			flightToggle.BackgroundColor3 = state and Color3.fromRGB(180, 60, 60) or Color3.fromRGB(80, 60, 140)
+		end,
+	}
+end
+
+-- ============================================
+-- ОБРАБОТКА ПЕРЕРОЖДЕНИЯ
+-- ============================================
+local characterConnection = nil
+
+local function onCharacterAdded(newCharacter)
+	if isFlying then stopFlight() end
+	character = newCharacter
+	humanoid = character:WaitForChild("Humanoid")
+	rootPart = character:WaitForChild("HumanoidRootPart")
+	menuOpen = false
+end
+
+-- ============================================
+-- ЗАГРУЗКА
+-- ============================================
+local function showLoadingAnimation()
+	pcall(function()
+		local loadingGui = Instance.new("ScreenGui")
+		loadingGui.Name = "XClientLoading"
+		loadingGui.Parent = player.PlayerGui
+		loadingGui.DisplayOrder = 999
+		
+		local bg = Instance.new("Frame")
+		bg.Parent = loadingGui
+		bg.Size = UDim2.new(1, 0, 1, 0)
+		bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		bg.BackgroundTransparency = 1
+		
+		local textLabel = Instance.new("TextLabel")
+		textLabel.Parent = bg
+		textLabel.Size = UDim2.new(0, 250, 0, 50)
+		textLabel.Position = UDim2.new(0.5, -125, 0.5, -25)
+		textLabel.BackgroundTransparency = 1
+		textLabel.Text = "xclient"
+		textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		textLabel.TextSize = 36
+		textLabel.Font = Enum.Font.GothamBlack
+		textLabel.TextTransparency = 1
+		
+		local line = Instance.new("Frame")
+		line.Parent = bg
+		line.Size = UDim2.new(0, 0, 0, 3)
+		line.Position = UDim2.new(0.5, -125, 0.5, 35)
+		line.BackgroundColor3 = Color3.fromRGB(200, 150, 255)
+		line.BackgroundTransparency = 1
+		
+		TweenService:Create(bg, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.6}):Play()
+		wait(0.15)
+		TweenService:Create(textLabel, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+		wait(0.3)
+		TweenService:Create(line, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.new(0, 250, 0, 3), BackgroundTransparency = 0}):Play()
+		wait(1.2)
+		TweenService:Create(bg, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(textLabel, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1}):Play()
+		wait(0.5)
+		loadingGui:Destroy()
+	end)
+end
+
+-- Инициализация
+showLoadingAnimation()
+wait(2.5)
+
+pcall(function() guiSystem = createGUI() end)
+pcall(function() characterConnection = player.CharacterAdded:Connect(onCharacterAdded) end)
+
+createNotification("xclient v5.1 | " .. detectedExploit .. " | Dodge System", 5)
+
+print("=":rep(55))
+print("xclient v5.1 - ФИНАЛЬНЫЙ СКРИПТ")
+print("Эксплойт: " .. detectedExploit)
+print("=":rep(55))
+print("ВКЛАДКА MOV (Магический полет + SPEED):")
+print("  - Полет (Flight) - WASD/Стик")
+print("  - Magic Resolver - авто-обход")
+print("  - Collision Boost - буст от игроков")
+print("  - MiniJump - мини прыжки (x3)")
+print("  - Self Push - пощечина из Steal a Brainrot")
+print("=":rep(55))
+print("ВКЛАДКА COM (Dodge):")
+print("  - Smart Dodge - уклонение от атак")
+print("  - Предсказание позиции врага")
+print("  - Настройки: радиус, кулдаун, сила")
+print("=":rep(55))
+print("Удержание кнопки - открыть настройки")
+print("Короткое нажатие - вкл/выкл")
+print("=":rep(55))
+print("Круглая иконка XC слева сверху - меню")
