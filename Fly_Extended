@@ -1,0 +1,1181 @@
+--[[
+    ═════════════════════════════════════════════════════════════════
+    XCLIENT v1.4.0 - PROFESSIONELLES HUB MIT CS:GO STIL
+    EXTENDED MOVEMENT SYSTEM
+    ═════════════════════════════════════════════════════════════════
+--]]
+
+-- ═════════════════════════════════════════════════════════════════
+-- ПРОВЕРКА СОВМЕСТИМОСТИ И ИНИЦИАЛИЗАЦИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local isExecutor = false
+local executorName = "Unknown"
+
+if _G.delta or (game:FindFirstChild("delta") and game.delta:FindFirstChild("getIdentity")) then
+    executorName = "Delta"
+    isExecutor = true
+elseif _G.xeno or (game:FindFirstChild("xeno") and game.xeno:FindFirstChild("getIdentity")) then
+    executorName = "Xeno"
+    isExecutor = true
+elseif _G.fluxus or (game:FindFirstChild("fluxus")) then
+    executorName = "Fluxus"
+    isExecutor = true
+elseif _G.codex or (game:FindFirstChild("codex")) then
+    executorName = "Codex"
+    isExecutor = true
+elseif script.Parent:IsA("BindableFunction") or script.Parent:IsA("BindableEvent") then
+    executorName = "Universal"
+    isExecutor = true
+end
+
+if not isExecutor then
+    warn("⚠️ Executor не обнаружен. Некоторые функции могут работать неправильно.")
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- ═════════════════════════════════════════════════════════════════
+-- КОНСТАНТЫ И КОНФИГУРАЦИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local FLIGHT_SPEED = _G.FlightSpeed or 16
+local HOVER_AMPLITUDE = 0.1
+local LERP_SPEED = 0.15
+
+-- Параметры физики
+local MICRO_DROP_CHANCE = 0.05
+local MICRO_DROP_FORCE = 0.3
+local MICRO_STEP_INTENSITY = 0.08
+local RANDOMIZATION_FREQUENCY = 2
+
+-- Цвета CS:GO стиля
+local COLOR_BG = Color3.fromRGB(25, 25, 30)
+local COLOR_ACCENT = Color3.fromRGB(100, 200, 255)
+local COLOR_TEXT = Color3.fromRGB(220, 220, 220)
+local COLOR_HOVER = Color3.fromRGB(50, 50, 60)
+local COLOR_SUCCESS = Color3.fromRGB(100, 255, 100)
+local COLOR_ERROR = Color3.fromRGB(255, 100, 100)
+
+-- ═════════════════════════════════════════════════════════════════
+-- НАСТРОЙКИ РЕЖИМОВ ДВИЖЕНИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local movementModes = {
+    collision = {
+        enabled = false,
+        speed = 50,
+        radius = 30,
+        name = "Collision",
+        description = "Boost от игрока"
+    },
+    miniJump = {
+        enabled = false,
+        speed = 30,
+        frequency = 0.5,
+        intensity = 15,
+        name = "MiniJump",
+        description = "Мини прыжки для буста"
+    },
+    selfPush = {
+        enabled = false,
+        speed = 60,
+        gloveType = "Пощечина",
+        active = false,
+        name = "Self Push",
+        description = "Удар перчаткой по себе"
+    }
+}
+
+-- ═════════════════════════════════════════════════════════════════
+-- ИНИЦИАЛИЗАЦИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local rootPart = character:WaitForChild("HumanoidRootPart")
+
+local isFlying = false
+local currentVelocity = Vector3.new(0, 0, 0)
+local hoverTime = 0
+local spaceKeyPressed = false
+
+local randomizationTimer = 0
+local currentRandomX = 0
+local currentRandomY = 0
+local currentRandomZ = 0
+local microDropOffset = 0
+
+local guiMode = "CS"
+local currentTab = "MOV"
+local connections = {}
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ ПОИСКА ПРЕДМЕТОВ
+-- ═════════════════════════════════════════════════════════════════
+
+local function findGloveInInventory(gloveName)
+    local backpack = localPlayer:FindFirstChild("Backpack")
+    if not backpack then return nil end
+    
+    for _, item in ipairs(backpack:GetChildren()) do
+        if item.Name == gloveName or item:FindFirstChild("ClassName") then
+            if item.Name:find("Пощечина") or item.Name == gloveName then
+                return item
+            end
+        end
+    end
+    
+    return nil
+end
+
+local function getNearestPlayer(range)
+    local nearest = nil
+    local nearestDistance = range or 100
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local distance = (player.Character.HumanoidRootPart.Position - rootPart.Position).Magnitude
+            if distance < nearestDistance then
+                nearest = player
+                nearestDistance = distance
+            end
+        end
+    end
+    
+    return nearest
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИЯ ЗАГРУЗКИ С АНИМАЦИЕЙ
+-- ═════════════════════════════════════════════════════════════════
+
+local function showLoadingScreen()
+    local loadingGui = Instance.new("ScreenGui")
+    loadingGui.Name = "LoadingScreen"
+    loadingGui.ResetOnSpawn = false
+    loadingGui.DisplayOrder = 10000
+    loadingGui.Parent = localPlayer:WaitForChild("PlayerGui")
+
+    local bg = Instance.new("Frame")
+    bg.Name = "Background"
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    bg.BackgroundTransparency = 0
+    bg.BorderSizePixel = 0
+    bg.Parent = loadingGui
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Size = UDim2.new(0, 300, 0, 100)
+    title.Position = UDim2.new(0.5, -150, 0.5, -50)
+    title.BackgroundTransparency = 1
+    title.Text = "XCLIENT"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextSize = 60
+    title.Font = Enum.Font.GothamBold
+    title.Parent = bg
+
+    local executorLabel = Instance.new("TextLabel")
+    executorLabel.Name = "ExecutorLabel"
+    executorLabel.Size = UDim2.new(0, 300, 0, 30)
+    executorLabel.Position = UDim2.new(0.5, -150, 0.5, 30)
+    executorLabel.BackgroundTransparency = 1
+    executorLabel.Text = "Executor: " .. executorName
+    executorLabel.TextColor3 = COLOR_ACCENT
+    executorLabel.TextSize = 14
+    executorLabel.Font = Enum.Font.Gotham
+    executorLabel.Parent = bg
+
+    local loadingBar = Instance.new("Frame")
+    loadingBar.Name = "LoadingBar"
+    loadingBar.Size = UDim2.new(0, 0, 0, 4)
+    loadingBar.Position = UDim2.new(0.5, -150, 0.5, 80)
+    loadingBar.BackgroundColor3 = COLOR_ACCENT
+    loadingBar.BorderSizePixel = 0
+    loadingBar.Parent = bg
+
+    local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Linear, Enum.EasingDirection.In)
+    local tween = TweenService:Create(loadingBar, tweenInfo, {Size = UDim2.new(0, 300, 0, 4)})
+    tween:Play()
+
+    tween.Completed:Connect(function()
+        wait(0.3)
+        local fadeOut = TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        local fadeTween = TweenService:Create(bg, fadeOut, {BackgroundTransparency = 1})
+        fadeTween:Play()
+        fadeTween.Completed:Connect(function()
+            loadingGui:Destroy()
+        end)
+    end)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИЯ УВЕДОМЛЕНИЙ
+-- ═════════════════════════════════════════════════════════════════
+
+local function showNotification(text, color)
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    
+    local notificationGui = Instance.new("ScreenGui")
+    notificationGui.Name = "Notification"
+    notificationGui.ResetOnSpawn = false
+    notificationGui.DisplayOrder = 9998
+    notificationGui.Parent = playerGui
+
+    local notification = Instance.new("Frame")
+    notification.Name = "NotificationFrame"
+    notification.Size = UDim2.new(0, 300, 0, 60)
+    notification.Position = UDim2.new(1, -320, 1, -80)
+    notification.BackgroundColor3 = COLOR_BG
+    notification.BorderSizePixel = 0
+    notification.Parent = notificationGui
+
+    local border = Instance.new("Frame")
+    border.Name = "Border"
+    border.Size = UDim2.new(0, 4, 1, 0)
+    border.Position = UDim2.new(0, 0, 0, 0)
+    border.BackgroundColor3 = color or COLOR_ACCENT
+    border.BorderSizePixel = 0
+    border.Parent = notification
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Text"
+    label.Size = UDim2.new(1, -20, 1, 0)
+    label.Position = UDim2.new(0, 10, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = COLOR_TEXT
+    label.TextSize = 12
+    label.Font = Enum.Font.Gotham
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.Parent = notification
+
+    notification.Position = UDim2.new(1, 0, 1, -80)
+    local slideIn = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local slideInTween = TweenService:Create(notification, slideIn, {Position = UDim2.new(1, -320, 1, -80)})
+    slideInTween:Play()
+
+    wait(3)
+    local slideOut = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    local slideOutTween = TweenService:Create(notification, slideOut, {Position = UDim2.new(1, 0, 1, -80)})
+    slideOutTween:Play()
+    slideOutTween.Completed:Connect(function()
+        notificationGui:Destroy()
+    end)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ РЕЖИМОВ ДВИЖЕНИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+local function activateCollision()
+    if movementModes.collision.enabled then
+        movementModes.collision.enabled = false
+        showNotification("✗ Collision отключена", COLOR_ERROR)
+        return
+    end
+    
+    movementModes.collision.enabled = true
+    showNotification("✓ Collision включена", COLOR_SUCCESS)
+    
+    local heartbeat
+    heartbeat = RunService.Heartbeat:Connect(function(deltaTime)
+        if not movementModes.collision.enabled or not character.Parent or humanoid.Health <= 0 then
+            heartbeat:Disconnect()
+            return
+        end
+        
+        local moveDirection = humanoid.MoveDirection
+        if moveDirection.Magnitude > 0 then
+            local boostDirection = moveDirection.Unit
+            local boostVelocity = boostDirection * movementModes.collision.speed
+            rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + boostVelocity * deltaTime
+        end
+    end)
+    
+    table.insert(connections, heartbeat)
+end
+
+local function activateMiniJump()
+    if movementModes.miniJump.enabled then
+        movementModes.miniJump.enabled = false
+        showNotification("✗ MiniJump отключена", COLOR_ERROR)
+        return
+    end
+    
+    movementModes.miniJump.enabled = true
+    showNotification("✓ MiniJump включена", COLOR_SUCCESS)
+    
+    local jumpTimer = 0
+    local heartbeat
+    heartbeat = RunService.Heartbeat:Connect(function(deltaTime)
+        if not movementModes.miniJump.enabled or not character.Parent or humanoid.Health <= 0 then
+            heartbeat:Disconnect()
+            return
+        end
+        
+        jumpTimer = jumpTimer + deltaTime
+        if jumpTimer >= movementModes.miniJump.frequency then
+            jumpTimer = 0
+            
+            local jumpForce = Vector3.new(0, movementModes.miniJump.intensity, 0)
+            rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + jumpForce
+        end
+    end)
+    
+    table.insert(connections, heartbeat)
+end
+
+local function activateSelfPush()
+    if movementModes.selfPush.enabled then
+        movementModes.selfPush.enabled = false
+        showNotification("✗ Self Push отключена", COLOR_ERROR)
+        return
+    end
+    
+    local glove = findGloveInInventory("Пощечина")
+    if not glove then
+        showNotification("✗ Перчатка не найдена в инвентаре!", COLOR_ERROR)
+        return
+    end
+    
+    movementModes.selfPush.enabled = true
+    showNotification("✓ Self Push включена", COLOR_SUCCESS)
+    
+    local pushTimer = 0
+    local heartbeat
+    heartbeat = RunService.Heartbeat:Connect(function(deltaTime)
+        if not movementModes.selfPush.enabled or not character.Parent or humanoid.Health <= 0 then
+            heartbeat:Disconnect()
+            movementModes.selfPush.enabled = false
+            return
+        end
+        
+        pushTimer = pushTimer + deltaTime
+        
+        -- Применяем удар каждые 0.5 секунды
+        if pushTimer >= 0.5 then
+            pushTimer = 0
+            
+            -- Используем локальное направление взгляда или направление движения
+            local pushDirection = rootPart.CFrame.LookVector
+            local pushForce = pushDirection * movementModes.selfPush.speed
+            
+            rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + pushForce
+            
+            -- Эффект рагдолла (небольшой поворот)
+            rootPart.RotVelocity = rootPart.RotVelocity + Vector3.new(
+                math.random(-5, 5),
+                math.random(-5, 5),
+                math.random(-5, 5)
+            )
+        end
+    end)
+    
+    table.insert(connections, heartbeat)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ ФИЗИКИ ПОЛЕТА
+-- ═════════════════════════════════════════════════════════════════
+
+local function shouldMicroDrop()
+    return math.random() < MICRO_DROP_CHANCE
+end
+
+local function updateRandomization(deltaTime)
+    randomizationTimer = randomizationTimer + deltaTime
+    
+    if randomizationTimer >= (1 / RANDOMIZATION_FREQUENCY) then
+        randomizationTimer = 0
+        
+        currentRandomX = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY
+        currentRandomY = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY * 0.5
+        currentRandomZ = (math.random() - 0.5) * 2 * MICRO_STEP_INTENSITY
+    end
+end
+
+local function updateMicroDrops(deltaTime)
+    if shouldMicroDrop() then
+        microDropOffset = microDropOffset - MICRO_DROP_FORCE * deltaTime
+    else
+        microDropOffset = microDropOffset + MICRO_DROP_FORCE * 0.5 * deltaTime
+    end
+    
+    microDropOffset = math.max(microDropOffset, -MICRO_DROP_FORCE)
+    microDropOffset = math.min(microDropOffset, 0)
+end
+
+local function createFlightEffect()
+    local existingEffect = rootPart:FindFirstChild("FlightEffect")
+    if existingEffect then
+        existingEffect:Destroy()
+    end
+
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "FlightEffect"
+    attachment.Parent = rootPart
+
+    local particleEmitter = Instance.new("ParticleEmitter")
+    particleEmitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    particleEmitter.Rate = 20
+    particleEmitter.Lifetime = NumberRange.new(0.8)
+    particleEmitter.Speed = NumberRange.new(2)
+    particleEmitter.Rotation = NumberRange.new(0, 360)
+    particleEmitter.Color = ColorSequence.new(COLOR_ACCENT)
+    particleEmitter.Transparency = NumberSequence.new(0, 0.5, 1)
+    particleEmitter.Parent = attachment
+
+    return attachment
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ФУНКЦИИ УПРАВЛЕНИЯ ПОЛЕТОМ
+-- ═════════════════════════════════════════════════════════════════
+
+local function activateFlight()
+    if isFlying then return end
+    isFlying = true
+    
+    local oldVelocity = rootPart:FindFirstChild("FlightVelocity")
+    if oldVelocity then oldVelocity:Destroy() end
+    
+    local oldGyro = rootPart:FindFirstChild("FlightGyro")
+    if oldGyro then oldGyro:Destroy() end
+
+    local bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Name = "FlightVelocity"
+    bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bodyVelocity.P = 1250
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.Parent = rootPart
+
+    local bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.Name = "FlightGyro"
+    bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bodyGyro.P = 3000
+    bodyGyro.D = 500
+    bodyGyro.Parent = rootPart
+
+    createFlightEffect()
+
+    currentVelocity = Vector3.new(0, 0, 0)
+    hoverTime = 0
+    randomizationTimer = 0
+    microDropOffset = 0
+
+    local heartbeatConnection
+    heartbeatConnection = RunService.Heartbeat:Connect(function(deltaTime)
+        if not isFlying or not character.Parent or humanoid.Health <= 0 then
+            heartbeatConnection:Disconnect()
+            if bodyVelocity and bodyVelocity.Parent then bodyVelocity:Destroy() end
+            if bodyGyro and bodyGyro.Parent then bodyGyro:Destroy() end
+            isFlying = false
+            return
+        end
+
+        updateRandomization(deltaTime)
+        updateMicroDrops(deltaTime)
+
+        local moveDirection = humanoid.MoveDirection
+        local verticalInput = spaceKeyPressed and 1 or -1
+
+        local isSprinting = false
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or 
+           UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then
+            isSprinting = true
+        end
+
+        local currentSpeed = FLIGHT_SPEED * (isSprinting and 1.5 or 1)
+        local flightDirection = Vector3.new(moveDirection.X, verticalInput * 0.5, moveDirection.Z)
+        
+        if flightDirection.Magnitude < 0.1 then
+            flightDirection = Vector3.new(0, -0.2, 0)
+        else
+            flightDirection = flightDirection.Unit
+        end
+
+        hoverTime = hoverTime + deltaTime
+        local hoverOffset = math.sin(hoverTime * 2) * HOVER_AMPLITUDE
+
+        local microStepVector = Vector3.new(currentRandomX, currentRandomY, currentRandomZ)
+
+        local targetVelocity = flightDirection * currentSpeed
+        local verticalOffset = hoverOffset + microDropOffset
+        targetVelocity = targetVelocity + Vector3.new(0, verticalOffset, 0)
+        targetVelocity = targetVelocity + microStepVector
+        
+        currentVelocity = currentVelocity:Lerp(targetVelocity, LERP_SPEED)
+        
+        bodyVelocity.Velocity = currentVelocity
+        rootPart.AssemblyLinearVelocity = currentVelocity
+        bodyGyro.CFrame = rootPart.CFrame
+    end)
+    
+    table.insert(connections, heartbeatConnection)
+    showNotification("✓ Полет включен!", COLOR_SUCCESS)
+end
+
+local function deactivateFlight()
+    isFlying = false
+    
+    local velocity = rootPart:FindFirstChild("FlightVelocity")
+    if velocity then velocity:Destroy() end
+    
+    local gyro = rootPart:FindFirstChild("FlightGyro")
+    if gyro then gyro:Destroy() end
+    
+    local effect = rootPart:FindFirstChild("FlightEffect")
+    if effect then effect:Destroy() end
+    
+    currentVelocity = Vector3.new(0, 0, 0)
+    showNotification("✓ Полет отключен!", COLOR_ERROR)
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- СЛАЙДЕР УПРАВЛЕНИЯ СКОРОСТЬЮ
+-- ═════════════════════════════════════════════════════════════════
+
+local function createSpeedSlider(parent, modeKey, initialValue, minValue, maxValue)
+    local sliderContainer = Instance.new("Frame")
+    sliderContainer.Name = modeKey .. "SliderContainer"
+    sliderContainer.Size = UDim2.new(1, -20, 0, 40)
+    sliderContainer.BackgroundTransparency = 1
+    sliderContainer.Parent = parent
+
+    local sliderLabel = Instance.new("TextLabel")
+    sliderLabel.Name = "SliderLabel"
+    sliderLabel.Size = UDim2.new(0, 100, 0, 20)
+    sliderLabel.Position = UDim2.new(0, 0, 0, 0)
+    sliderLabel.BackgroundTransparency = 1
+    sliderLabel.Text = "Speed: " .. tostring(math.floor(initialValue))
+    sliderLabel.TextColor3 = COLOR_ACCENT
+    sliderLabel.TextSize = 12
+    sliderLabel.Font = Enum.Font.Gotham
+    sliderLabel.TextXAlignment = Enum.TextXAlignment.Left
+    sliderLabel.Parent = sliderContainer
+
+    local slider = Instance.new("Frame")
+    slider.Name = "Slider"
+    slider.Size = UDim2.new(1, -120, 0, 6)
+    slider.Position = UDim2.new(0, 110, 0, 7)
+    slider.BackgroundColor3 = COLOR_HOVER
+    slider.BorderSizePixel = 0
+    slider.Parent = sliderContainer
+
+    local sliderCorner = Instance.new("UICorner")
+    sliderCorner.CornerRadius = UDim.new(0, 3)
+    sliderCorner.Parent = slider
+
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Name = "Fill"
+    sliderFill.Size = UDim2.new((initialValue - minValue) / (maxValue - minValue), 0, 1, 0)
+    sliderFill.BackgroundColor3 = COLOR_ACCENT
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = slider
+
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(0, 3)
+    fillCorner.Parent = sliderFill
+
+    local thumb = Instance.new("ImageButton")
+    thumb.Name = "Thumb"
+    thumb.Size = UDim2.new(0, 16, 0, 16)
+    thumb.Position = UDim2.new((initialValue - minValue) / (maxValue - minValue), -8, 0.5, -8)
+    thumb.BackgroundColor3 = COLOR_ACCENT
+    thumb.BorderSizePixel = 0
+    thumb.Image = ""
+    thumb.Parent = slider
+
+    local thumbCorner = Instance.new("UICorner")
+    thumbCorner.CornerRadius = UDim.new(1, 0)
+    thumbCorner.Parent = thumb
+
+    local dragging = false
+    
+    thumb.MouseButton1Down:Connect(function()
+        dragging = true
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input, gameProcessed)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input, gameProcessed)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouseLocation = UserInputService:GetMouseLocation()
+            local sliderAbsoluteSize = slider.AbsoluteSize.X
+            local sliderAbsolutePosition = slider.AbsolutePosition.X
+            
+            local relativePosition = mouseLocation.X - sliderAbsolutePosition
+            local percentage = math.max(0, math.min(1, relativePosition / sliderAbsoluteSize))
+            
+            local newValue = minValue + (percentage * (maxValue - minValue))
+            newValue = math.floor(newValue)
+            
+            movementModes[modeKey].speed = newValue
+            
+            sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+            thumb.Position = UDim2.new(percentage, -8, 0.5, -8)
+            sliderLabel.Text = "Speed: " .. tostring(newValue)
+        end
+    end)
+    
+    return sliderContainer
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- СОЗДАНИЕ CS:GO СТИЛЯ GUI
+-- ═════════════════════════════════════════════════════════════════
+
+local function createCSGUI()
+    local playerGui = localPlayer:WaitForChild("PlayerGui")
+    
+    local existingGui = playerGui:FindFirstChild("XClientHub")
+    if existingGui then
+        existingGui:Destroy()
+    end
+
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "XClientHub"
+    screenGui.ResetOnSpawn = false
+    screenGui.DisplayOrder = 9999
+    screenGui.Parent = playerGui
+
+    -- ────────────────────────────────────────────────────────────────
+    -- ИКОНКА СЛЕВА СВЕРХУ
+    -- ────────────────────────────────────────────────────────────────
+
+    local logoFrame = Instance.new("Frame")
+    logoFrame.Name = "Logo"
+    logoFrame.Size = UDim2.new(0, 120, 0, 120)
+    logoFrame.Position = UDim2.new(0, 15, 0, 15)
+    logoFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    logoFrame.BorderSizePixel = 0
+    logoFrame.Parent = screenGui
+
+    local logoCorner = Instance.new("UICorner")
+    logoCorner.CornerRadius = UDim.new(1, 0)
+    logoCorner.Parent = logoFrame
+
+    local logoShadow = Instance.new("UIStroke")
+    logoShadow.Color = COLOR_ACCENT
+    logoShadow.Thickness = 2
+    logoShadow.Transparency = 0.5
+    logoShadow.Parent = logoFrame
+
+    local logoText = Instance.new("TextLabel")
+    logoText.Size = UDim2.new(1, 0, 1, 0)
+    logoText.BackgroundTransparency = 1
+    logoText.Text = "XCLIENT"
+    logoText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    logoText.TextSize = 16
+    logoText.Font = Enum.Font.GothamBold
+    logoText.Parent = logoFrame
+
+    -- ────────────────────────────────────────────────────────────────
+    -- ГЛАВНАЯ ПАНЕЛЬ
+    -- ────────────────────────────────────────────────────────────────
+
+    local mainPanel = Instance.new("Frame")
+    mainPanel.Name = "MainPanel"
+    mainPanel.Size = UDim2.new(0, 450, 0, 600)
+    mainPanel.Position = UDim2.new(1, -470, 0, 15)
+    mainPanel.BackgroundColor3 = COLOR_BG
+    mainPanel.BorderSizePixel = 0
+    mainPanel.Parent = screenGui
+
+    local panelCorner = Instance.new("UICorner")
+    panelCorner.CornerRadius = UDim.new(0, 8)
+    panelCorner.Parent = mainPanel
+
+    local panelStroke = Instance.new("UIStroke")
+    panelStroke.Color = COLOR_ACCENT
+    panelStroke.Thickness = 1
+    panelStroke.Transparency = 0.7
+    panelStroke.Parent = mainPanel
+
+    -- ────────────────────────────────────────────────────────────────
+    -- ВКЛАДКИ
+    -- ────────────────────────────────────────────────────────────────
+
+    local tabsContainer = Instance.new("Frame")
+    tabsContainer.Name = "TabsContainer"
+    tabsContainer.Size = UDim2.new(1, 0, 0, 40)
+    tabsContainer.Position = UDim2.new(0, 0, 0, 0)
+    tabsContainer.BackgroundColor3 = COLOR_BG
+    tabsContainer.BorderSizePixel = 0
+    tabsContainer.Parent = mainPanel
+
+    local tabsLine = Instance.new("Frame")
+    tabsLine.Size = UDim2.new(1, 0, 0, 1)
+    tabsLine.Position = UDim2.new(0, 0, 1, -1)
+    tabsLine.BackgroundColor3 = COLOR_ACCENT
+    tabsLine.BorderSizePixel = 0
+    tabsLine.Parent = tabsContainer
+
+    local tabs = {"MOV", "COM", "VISUAL", "GUI"}
+    local tabButtons = {}
+
+    for i, tabName in ipairs(tabs) do
+        local tabButton = Instance.new("TextButton")
+        tabButton.Name = tabName .. "Tab"
+        tabButton.Size = UDim2.new(0, 112, 1, 0)
+        tabButton.Position = UDim2.new(0, (i-1) * 112, 0, 0)
+        tabButton.BackgroundColor3 = COLOR_BG
+        tabButton.BorderSizePixel = 0
+        tabButton.Text = tabName
+        tabButton.TextColor3 = COLOR_TEXT
+        tabButton.TextSize = 12
+        tabButton.Font = Enum.Font.GothamBold
+        tabButton.Parent = tabsContainer
+
+        local underline = Instance.new("Frame")
+        underline.Name = "Underline"
+        underline.Size = UDim2.new(1, 0, 0, 2)
+        underline.Position = UDim2.new(0, 0, 1, -2)
+        underline.BackgroundColor3 = COLOR_ACCENT
+        underline.BorderSizePixel = 0
+        underline.Visible = (i == 1)
+        underline.Parent = tabButton
+
+        tabButtons[tabName] = {button = tabButton, underline = underline}
+    end
+
+    -- ────────────────────────────────────────────────────────────────
+    -- СОДЕРЖИМОЕ ВКЛАДОК
+    -- ────────────────────────────────────────────────────────────────
+
+    local contentContainer = Instance.new("Frame")
+    contentContainer.Name = "ContentContainer"
+    contentContainer.Size = UDim2.new(1, 0, 1, -40)
+    contentContainer.Position = UDim2.new(0, 0, 0, 40)
+    contentContainer.BackgroundTransparency = 1
+    contentContainer.BorderSizePixel = 0
+    contentContainer.Parent = mainPanel
+
+    local scrollList = Instance.new("ScrollingFrame")
+    scrollList.Name = "ScrollList"
+    scrollList.Size = UDim2.new(1, 0, 1, 0)
+    scrollList.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollList.BackgroundTransparency = 1
+    scrollList.BorderSizePixel = 0
+    scrollList.Parent = contentContainer
+
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 10)
+    listLayout.Parent = scrollList
+
+    -- MOV TAB
+    local movTab = Instance.new("Frame")
+    movTab.Name = "MOVContent"
+    movTab.Size = UDim2.new(1, 0, 1, 0)
+    movTab.BackgroundTransparency = 1
+    movTab.Visible = true
+    movTab.Parent = contentContainer
+
+    local movLayout = Instance.new("UIListLayout")
+    movLayout.Padding = UDim.new(0, 10)
+    movLayout.Parent = movTab
+
+    local movPadding = Instance.new("UIPadding")
+    movPadding.PaddingLeft = UDim.new(0, 10)
+    movPadding.PaddingRight = UDim.new(0, 10)
+    movPadding.PaddingTop = UDim.new(0, 10)
+    movPadding.Parent = movTab
+
+    -- ────────────────────────────────────────────────────────────────
+    -- FLIGHT BUTTON
+    -- ────────────────────────────────────────────────────────────────
+
+    local flightLabel = Instance.new("TextLabel")
+    flightLabel.Name = "FlightLabel"
+    flightLabel.Size = UDim2.new(1, 0, 0, 20)
+    flightLabel.BackgroundTransparency = 1
+    flightLabel.Text = "Flight System"
+    flightLabel.TextColor3 = COLOR_ACCENT
+    flightLabel.TextSize = 14
+    flightLabel.Font = Enum.Font.GothamBold
+    flightLabel.TextXAlignment = Enum.TextXAlignment.Left
+    flightLabel.Parent = movTab
+
+    local flightToggle = Instance.new("TextButton")
+    flightToggle.Name = "FlightToggle"
+    flightToggle.Size = UDim2.new(1, 0, 0, 40)
+    flightToggle.BackgroundColor3 = COLOR_HOVER
+    flightToggle.BorderSizePixel = 0
+    flightToggle.Text = "🪄 Enable Flight"
+    flightToggle.TextColor3 = COLOR_TEXT
+    flightToggle.TextSize = 12
+    flightToggle.Font = Enum.Font.Gotham
+    flightToggle.Parent = movTab
+
+    local flightCorner = Instance.new("UICorner")
+    flightCorner.CornerRadius = UDim.new(0, 6)
+    flightCorner.Parent = flightToggle
+
+    local flightStroke = Instance.new("UIStroke")
+    flightStroke.Color = COLOR_ACCENT
+    flightStroke.Thickness = 1
+    flightStroke.Transparency = 0.5
+    flightStroke.Parent = flightToggle
+
+    flightToggle.MouseButton1Click:Connect(function()
+        if isFlying then
+            deactivateFlight()
+            flightToggle.Text = "🪄 Enable Flight"
+            flightToggle.BackgroundColor3 = COLOR_HOVER
+            flightToggle.TextColor3 = COLOR_TEXT
+        else
+            activateFlight()
+            flightToggle.Text = "🪄 Disable Flight"
+            flightToggle.BackgroundColor3 = COLOR_ACCENT
+            flightToggle.TextColor3 = Color3.fromRGB(0, 0, 0)
+        end
+    end)
+
+    -- ────────────────────────────────────────────────────────────────
+    -- MOVEMENT MODES
+    -- ────────────────────────────────────────────────────────────────
+
+    local movementLabel = Instance.new("TextLabel")
+    movementLabel.Name = "MovementLabel"
+    movementLabel.Size = UDim2.new(1, 0, 0, 20)
+    movementLabel.BackgroundTransparency = 1
+    movementLabel.Text = "Movement Modes"
+    movementLabel.TextColor3 = COLOR_ACCENT
+    movementLabel.TextSize = 14
+    movementLabel.Font = Enum.Font.GothamBold
+    movementLabel.TextXAlignment = Enum.TextXAlignment.Left
+    movementLabel.Parent = movTab
+
+    -- COLLISION BUTTON
+    local collisionContainer = Instance.new("Frame")
+    collisionContainer.Name = "CollisionContainer"
+    collisionContainer.Size = UDim2.new(1, 0, 0, 60)
+    collisionContainer.BackgroundTransparency = 1
+    collisionContainer.Parent = movTab
+
+    local collisionButton = Instance.new("TextButton")
+    collisionButton.Name = "CollisionButton"
+    collisionButton.Size = UDim2.new(1, 0, 0, 40)
+    collisionButton.BackgroundColor3 = COLOR_HOVER
+    collisionButton.BorderSizePixel = 0
+    collisionButton.Text = "💥 Collision (Boost от игрока)"
+    collisionButton.TextColor3 = COLOR_TEXT
+    collisionButton.TextSize = 11
+    collisionButton.Font = Enum.Font.Gotham
+    collisionButton.Parent = collisionContainer
+
+    local collisionCorner = Instance.new("UICorner")
+    collisionCorner.CornerRadius = UDim.new(0, 6)
+    collisionCorner.Parent = collisionButton
+
+    local collisionStroke = Instance.new("UIStroke")
+    collisionStroke.Color = COLOR_ACCENT
+    collisionStroke.Thickness = 1
+    collisionStroke.Transparency = 0.5
+    collisionStroke.Parent = collisionButton
+
+    collisionButton.MouseButton1Click:Connect(activateCollision)
+
+    local collisionSlider = createSpeedSlider(collisionContainer, "collision", 50, 10, 150)
+    collisionSlider.Position = UDim2.new(0, 0, 0, 45)
+
+    -- MINIJUMP BUTTON
+    local miniJumpContainer = Instance.new("Frame")
+    miniJumpContainer.Name = "MiniJumpContainer"
+    miniJumpContainer.Size = UDim2.new(1, 0, 0, 60)
+    miniJumpContainer.BackgroundTransparency = 1
+    miniJumpContainer.Parent = movTab
+
+    local miniJumpButton = Instance.new("TextButton")
+    miniJumpButton.Name = "MiniJumpButton"
+    miniJumpButton.Size = UDim2.new(1, 0, 0, 40)
+    miniJumpButton.BackgroundColor3 = COLOR_HOVER
+    miniJumpButton.BorderSizePixel = 0
+    miniJumpButton.Text = "⬆️ MiniJump (Мини прыжки)"
+    miniJumpButton.TextColor3 = COLOR_TEXT
+    miniJumpButton.TextSize = 11
+    miniJumpButton.Font = Enum.Font.Gotham
+    miniJumpButton.Parent = miniJumpContainer
+
+    local miniJumpCorner = Instance.new("UICorner")
+    miniJumpCorner.CornerRadius = UDim.new(0, 6)
+    miniJumpCorner.Parent = miniJumpButton
+
+    local miniJumpStroke = Instance.new("UIStroke")
+    miniJumpStroke.Color = COLOR_ACCENT
+    miniJumpStroke.Thickness = 1
+    miniJumpStroke.Transparency = 0.5
+    miniJumpStroke.Parent = miniJumpButton
+
+    miniJumpButton.MouseButton1Click:Connect(activateMiniJump)
+
+    local miniJumpSlider = createSpeedSlider(miniJumpContainer, "miniJump", 30, 5, 100)
+    miniJumpSlider.Position = UDim2.new(0, 0, 0, 45)
+
+    -- SELF PUSH BUTTON
+    local selfPushContainer = Instance.new("Frame")
+    selfPushContainer.Name = "SelfPushContainer"
+    selfPushContainer.Size = UDim2.new(1, 0, 0, 60)
+    selfPushContainer.BackgroundTransparency = 1
+    selfPushContainer.Parent = movTab
+
+    local selfPushButton = Instance.new("TextButton")
+    selfPushButton.Name = "SelfPushButton"
+    selfPushButton.Size = UDim2.new(1, 0, 0, 40)
+    selfPushButton.BackgroundColor3 = COLOR_HOVER
+    selfPushButton.BorderSizePixel = 0
+    selfPushButton.Text = "👊 Self Push (Удар себя)"
+    selfPushButton.TextColor3 = COLOR_TEXT
+    selfPushButton.TextSize = 11
+    selfPushButton.Font = Enum.Font.Gotham
+    selfPushButton.Parent = selfPushContainer
+
+    local selfPushCorner = Instance.new("UICorner")
+    selfPushCorner.CornerRadius = UDim.new(0, 6)
+    selfPushCorner.Parent = selfPushButton
+
+    local selfPushStroke = Instance.new("UIStroke")
+    selfPushStroke.Color = COLOR_ACCENT
+    selfPushStroke.Thickness = 1
+    selfPushStroke.Transparency = 0.5
+    selfPushStroke.Parent = selfPushButton
+
+    selfPushButton.MouseButton1Click:Connect(activateSelfPush)
+
+    local selfPushSlider = createSpeedSlider(selfPushContainer, "selfPush", 60, 20, 200)
+    selfPushSlider.Position = UDim2.new(0, 0, 0, 45)
+
+    -- ────────────────────────────────────────────────────────────────
+    -- OTHER TABS
+    -- ────────────────────────────────────────────────────────────────
+
+    -- COM TAB
+    local comTab = Instance.new("Frame")
+    comTab.Name = "COMContent"
+    comTab.Size = UDim2.new(1, 0, 1, 0)
+    comTab.BackgroundTransparency = 1
+    comTab.Visible = false
+    comTab.Parent = contentContainer
+
+    local comLabel = Instance.new("TextLabel")
+    comLabel.Size = UDim2.new(1, -20, 0, 20)
+    comLabel.Position = UDim2.new(0, 10, 0, 20)
+    comLabel.BackgroundTransparency = 1
+    comLabel.Text = "Coming Soon..."
+    comLabel.TextColor3 = COLOR_TEXT
+    comLabel.TextSize = 12
+    comLabel.Font = Enum.Font.Gotham
+    comLabel.TextXAlignment = Enum.TextXAlignment.Left
+    comLabel.Parent = comTab
+
+    -- VISUAL TAB
+    local visualTab = Instance.new("Frame")
+    visualTab.Name = "VISUALContent"
+    visualTab.Size = UDim2.new(1, 0, 1, 0)
+    visualTab.BackgroundTransparency = 1
+    visualTab.Visible = false
+    visualTab.Parent = contentContainer
+
+    local visualLabel = Instance.new("TextLabel")
+    visualLabel.Size = UDim2.new(1, -20, 0, 20)
+    visualLabel.Position = UDim2.new(0, 10, 0, 20)
+    visualLabel.BackgroundTransparency = 1
+    visualLabel.Text = "Coming Soon..."
+    visualLabel.TextColor3 = COLOR_TEXT
+    visualLabel.TextSize = 12
+    visualLabel.Font = Enum.Font.Gotham
+    visualLabel.TextXAlignment = Enum.TextXAlignment.Left
+    visualLabel.Parent = visualTab
+
+    -- GUI TAB
+    local guiTab = Instance.new("Frame")
+    guiTab.Name = "GUIContent"
+    guiTab.Size = UDim2.new(1, 0, 1, 0)
+    guiTab.BackgroundTransparency = 1
+    guiTab.Visible = false
+    guiTab.Parent = contentContainer
+
+    local guiLabel = Instance.new("TextLabel")
+    guiLabel.Size = UDim2.new(1, -20, 0, 20)
+    guiLabel.Position = UDim2.new(0, 10, 0, 20)
+    guiLabel.BackgroundTransparency = 1
+    guiLabel.Text = "GUI Style"
+    guiLabel.TextColor3 = COLOR_ACCENT
+    guiLabel.TextSize = 14
+    guiLabel.Font = Enum.Font.GothamBold
+    guiLabel.TextXAlignment = Enum.TextXAlignment.Left
+    guiLabel.Parent = guiTab
+
+    local csButton = Instance.new("TextButton")
+    csButton.Name = "CSButton"
+    csButton.Size = UDim2.new(0.5, -10, 0, 40)
+    csButton.Position = UDim2.new(0, 10, 0, 50)
+    csButton.BackgroundColor3 = COLOR_ACCENT
+    csButton.BorderSizePixel = 0
+    csButton.Text = "CS Style"
+    csButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+    csButton.TextSize = 12
+    csButton.Font = Enum.Font.GothamBold
+    csButton.Parent = guiTab
+
+    local csCorner = Instance.new("UICorner")
+    csCorner.CornerRadius = UDim.new(0, 6)
+    csCorner.Parent = csButton
+
+    local panelButtonGui = Instance.new("TextButton")
+    panelButtonGui.Name = "PanelButton"
+    panelButtonGui.Size = UDim2.new(0.5, -10, 0, 40)
+    panelButtonGui.Position = UDim2.new(0.5, 0, 0, 50)
+    panelButtonGui.BackgroundColor3 = COLOR_HOVER
+    panelButtonGui.BorderSizePixel = 0
+    panelButtonGui.Text = "Panel Style"
+    panelButtonGui.TextColor3 = COLOR_TEXT
+    panelButtonGui.TextSize = 12
+    panelButtonGui.Font = Enum.Font.GothamBold
+    panelButtonGui.Parent = guiTab
+
+    local panelCornerGui = Instance.new("UICorner")
+    panelCornerGui.CornerRadius = UDim.new(0, 6)
+    panelCornerGui.Parent = panelButtonGui
+
+    csButton.MouseButton1Click:Connect(function()
+        guiMode = "CS"
+        csButton.BackgroundColor3 = COLOR_ACCENT
+        csButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+        panelButtonGui.BackgroundColor3 = COLOR_HOVER
+        panelButtonGui.TextColor3 = COLOR_TEXT
+        showNotification("✓ GUI стиль: CS", COLOR_SUCCESS)
+    end)
+
+    panelButtonGui.MouseButton1Click:Connect(function()
+        guiMode = "Panel"
+        panelButtonGui.BackgroundColor3 = COLOR_ACCENT
+        panelButtonGui.TextColor3 = Color3.fromRGB(0, 0, 0)
+        csButton.BackgroundColor3 = COLOR_HOVER
+        csButton.TextColor3 = COLOR_TEXT
+        showNotification("✓ GUI стиль: Panel", COLOR_SUCCESS)
+    end)
+
+    -- ────────────────────────────────────────────────────────────────
+    -- ФУНКЦИЯ ПЕРЕКЛЮЧЕНИЯ ВКЛАДОК
+    -- ────────────────────────────────────────────────────────────────
+
+    local function switchTab(tabName)
+        currentTab = tabName
+        
+        for _, child in ipairs(contentContainer:GetChildren()) do
+            if child.Name ~= "ScrollList" then
+                child.Visible = false
+            end
+        end
+
+        if tabName == "MOV" then
+            movTab.Visible = true
+        elseif tabName == "COM" then
+            comTab.Visible = true
+        elseif tabName == "VISUAL" then
+            visualTab.Visible = true
+        elseif tabName == "GUI" then
+            guiTab.Visible = true
+        end
+
+        for name, tab in pairs(tabButtons) do
+            tab.underline.Visible = (name == tabName)
+        end
+    end
+
+    for tabName, tab in pairs(tabButtons) do
+        tab.button.MouseButton1Click:Connect(function()
+            switchTab(tabName)
+        end)
+    end
+
+    return screenGui
+end
+
+-- ═════════════════════════════════════════════════════════════════
+-- ОБРАБОТЧИКИ ВВОДА
+-- ═════════════════════════════════════════════════════════════════
+
+local inputBeganConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    if input.KeyCode == Enum.KeyCode.Space then
+        spaceKeyPressed = true
+    end
+end)
+
+table.insert(connections, inputBeganConnection)
+
+local inputEndedConnection = UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.Space then
+        spaceKeyPressed = false
+    end
+end)
+
+table.insert(connections, inputEndedConnection)
+
+-- ═════════════════════════════════════════════════════════════════
+-- ОБРАБОТЧИКИ СМЕРТИ И СМЕНЫ ПЕРСОНАЖА
+-- ═════════════════════════════════════════════════════════════════
+
+local diedConnection = humanoid.Died:Connect(function()
+    deactivateFlight()
+    movementModes.collision.enabled = false
+    movementModes.miniJump.enabled = false
+    movementModes.selfPush.enabled = false
+    
+    for _, connection in ipairs(connections) do
+        if connection and connection.Connected then
+            connection:Disconnect()
+        end
+    end
+end)
+
+table.insert(connections, diedConnection)
+
+local characterAddedConnection = localPlayer.CharacterAdded:Connect(function(newCharacter)
+    deactivateFlight()
+    movementModes.collision.enabled = false
+    movementModes.miniJump.enabled = false
+    movementModes.selfPush.enabled = false
+    
+    for _, connection in ipairs(connections) do
+        if connection and connection.Connected then
+            connection:Disconnect()
+        end
+    end
+    
+    script:Destroy()
+end)
+
+table.insert(connections, characterAddedConnection)
+
+-- ═════════════════════════════════════════════════════════════════
+-- ИНИЦИАЛИЗАЦИЯ
+-- ═════════════════════════════════════════════════════════════════
+
+showLoadingScreen()
+wait(3)
+createCSGUI()
+showNotification("✓ XCLIENT v1.4.0 загружен!", COLOR_SUCCESS)
+showNotification("✓ Executor: " .. executorName, COLOR_ACCENT)
+
+print("════════════════════════════════════════════════════════════════")
+print("✓ XCLIENT v1.4.0 инициализирован успешно!")
+print("✓ Executor: " .. executorName)
+print("✓ Стиль: CS:GO")
+print("✓ Функции: Flight, Collision, MiniJump, Self Push")
+print("✓ Movement: Вкладка MOV → Выбрать функцию")
+print("════════════════════════════════════════════════════════════════")
