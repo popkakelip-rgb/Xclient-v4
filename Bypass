@@ -1,27 +1,24 @@
 --[[
-    xclient v8.0 | FIXED EDITION
-    Delta · Xeno · Fluxus · Codex · KRNL · Synapse
-
-    MOV: Magic Flight · Resolver · Damage Fly · Infinite Jump · Speed
-    COM: SmartDodge · Float · Noclip · Long Jump · Anti-Ragdoll · Anti-Reset · Auto Platform
-    VISUAL: Brainrot ESP + Players ESP + Distance
-    THEME: 6 тем + обводка + прозрачность + keybinds
-    PIN: 📌 перетаскиваемый виджет
+    xclient v9.0 | CLEAN BUILD
+    Delta · Xeno · Fluxus · Codex · KRNL
+    Все функции работают. Баги исправлены.
 --]]
 
--- ══ ДВОЙНОЙ ЗАПУСК ════════════════════════════════════════════════
+-- ══ ЗАЩИТА ════════════════════════════════════════════════════════
 local ENV = (typeof(getgenv)=="function" and pcall(getgenv) and getgenv()) or _G
-if ENV.xclient_v8 then
-    local function kill(par,n) if par then local o=par:FindFirstChild(n);if o then o:Destroy() end end end
+if ENV.xclient_v9 then
+    local function kill(par,n)
+        if par then local o=par:FindFirstChild(n);if o then o:Destroy() end end
+    end
     local lp=game:GetService("Players").LocalPlayer
-    kill(lp and lp:FindFirstChild("PlayerGui"),"xclient_v8")
-    pcall(function() kill(game:GetService("CoreGui"),"xclient_v8") end)
+    kill(lp and lp:FindFirstChild("PlayerGui"),"xclient_v9")
+    pcall(function() kill(game:GetService("CoreGui"),"xclient_v9") end)
 end
-ENV.xclient_v8=true
+ENV.xclient_v9=true
 
 -- ══ СЕРВИСЫ ═══════════════════════════════════════════════════════
 local Players    = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local RunSvc     = game:GetService("RunService")
 local TweenSvc   = game:GetService("TweenService")
 local UIS        = game:GetService("UserInputService")
 local WS         = game:GetService("Workspace")
@@ -34,244 +31,217 @@ local Hum  = Char:WaitForChild("Humanoid")
 local Root = Char:WaitForChild("HumanoidRootPart")
 
 -- ══ ТЕМА ══════════════════════════════════════════════════════════
-local THEMES = {
-    Blue   = Color3.fromRGB(0,  160, 255),
-    Purple = Color3.fromRGB(160, 80, 255),
-    Green  = Color3.fromRGB(0,  200, 120),
-    Red    = Color3.fromRGB(255,  60,  60),
-    Gold   = Color3.fromRGB(255, 195,  65),
-    Pink   = Color3.fromRGB(255, 120, 180),
+local THEMES={
+    Blue=Color3.fromRGB(0,160,255), Purple=Color3.fromRGB(160,80,255),
+    Green=Color3.fromRGB(0,200,120), Red=Color3.fromRGB(255,60,60),
+    Gold=Color3.fromRGB(255,195,65), Pink=Color3.fromRGB(255,120,180),
 }
-local themeColor = THEMES.Blue
-local themeElems = {}
-local function applyTheme(col)
-    themeColor=col
-    for _,e in ipairs(themeElems) do pcall(function() e.obj[e.prop]=col end) end
-end
-local function regTheme(obj,prop)
-    table.insert(themeElems,{obj=obj,prop=prop}); obj[prop]=themeColor
+local TC=THEMES.Blue
+local themeElems={}
+local function regTC(o,p) table.insert(themeElems,{o=o,p=p});o[p]=TC end
+local function applyTC(col)
+    TC=col
+    for _,e in ipairs(themeElems) do pcall(function() e.o[e.p]=col end) end
 end
 
 -- ══ ЦВЕТА ═════════════════════════════════════════════════════════
-local BG   = Color3.fromRGB(16, 16, 20)
-local BG2  = Color3.fromRGB(10, 10, 14)
-local BG3  = Color3.fromRGB(24, 24, 30)
-local SIDE = Color3.fromRGB(8,  8,  11)
-local TXT  = Color3.fromRGB(210,210,220)
-local TXTD = Color3.fromRGB(76, 76, 92)
-local BDR  = Color3.fromRGB(34, 34, 44)
-local WHT  = Color3.fromRGB(255,255,255)
-local BLK  = Color3.fromRGB(0,  0,  0)
-local XBLUE= Color3.fromRGB(135,206,250)
-local NTFBG= Color3.fromRGB(8,  8,  12)
+local BG=Color3.fromRGB(16,16,20);   local BG2=Color3.fromRGB(10,10,14)
+local BG3=Color3.fromRGB(24,24,30);  local SIDE=Color3.fromRGB(8,8,11)
+local TXT=Color3.fromRGB(210,210,220);local TXTD=Color3.fromRGB(76,76,92)
+local BDR=Color3.fromRGB(34,34,44);  local WHT=Color3.fromRGB(255,255,255)
+local BLK=Color3.fromRGB(0,0,0);     local XBLUE=Color3.fromRGB(135,206,250)
 
--- ══ СОСТОЯНИЕ ═════════════════════════════════════════════════════
-local flyOn=false;      local flyBV=nil;      local flyBG=nil;     local flyConn=nil
+-- ══ СОСТОЯНИЕ ФУНКЦИЙ ════════════════════════════════════════════
+local flyOn=false;     local flyBV=nil;    local flyBG=nil;    local flyConn=nil
 local flySpeed=18
-local wobT=0;local wobS=0;local dC=0;local dTgt=0;local dTmr=0
+local wT=0;local wS=0;local dC=0;local dTgt=0;local dTmr=0
 
-local resolverOn=false; local resActive=false; local resVel=0
+local resolverOn=false; local resActive=false
 
-local dfOn=false;       local dfActive=false;  local dfCharge=100
-local dfConn=nil;       local dfDmgConn=nil;   local dfBVObj=nil
-local dfSegs={}
+local dfOn=false;      local dfActive=false; local dfCharge=100
+local dfConn=nil;      local dfDmgConn=nil;  local dfBVO=nil
+local dfSegs={}; local dfPctLbl=nil; local dfHudFrame=nil
 
-local infJumpOn=false;  local infJumpConn=nil; local infStConn=nil
+local infJumpOn=false; local infJConn=nil;  local infStConn=nil
 
-local speedMode="collision"; local speedConn=nil; local jumpConn=nil
-local spCfg={
-    collision={radius=8,speed=32},
-    minijump ={power=18,rate=0.18},
-    selfpush ={speed=55},
-}
+local speedMode="collision"
+local speedConn=nil;   local jumpConn=nil
+local spCfg={collision={r=8,s=32},minijump={p=18,rate=0.18},selfpush={s=55}}
 
-local floatOn=false;    local floatBV=nil;    local floatBG=nil
-local floatConn=nil;    local frozenRot=nil
+local floatOn=false;   local floatBV=nil;  local floatBG=nil
+local floatConn=nil;   local frozenRot=nil
 
-local apOn=false;       local apPart=nil;     local apConn=nil
-local apSpeed=12
+local apOn=false;      local apPart=nil;   local apConn=nil; local apSpd=12
 
-local ljOn=false;       local ljOrigPow=50;   local ljConn=nil; local ljStConn=nil
+local ljOn=false;      local ljOrig=50;    local ljConn=nil; local ljStConn=nil
 
-local noclipOn=false;   local noclipConn=nil
+local ncOn=false;      local ncConn=nil
 
-local arOn=false;       local arConn=nil
+local arOn=false;      local arConn=nil
 
-local antiResetOn=false; local antiResetConn=nil
+local antiRstOn=false; local antiRstConn=nil
 
 local dodgeOn=false
-local dCfg={Radius=18,PredictTime=0.28,BaseForce=18,SpeedMult=0.45,Cooldown=0.35}
+local dCfg={R=18,PT=0.28,BF=18,SM=0.45,CD=0.35}
 local lastDodge=0
 
-local espPlayers=false; local espShowDist=false
-local espRarity={}; local espMut={}
-local playerEsp={}; local rarityEsp={}
+local swOn=false;      local swConn=nil;   local swVal=32
 
-local keybindOn=true
-local keybinds={}
+local hjOn=false;      local hjPow=80;     local hjConn=nil
+
+local spinOn=false;    local spinConn=nil; local spinSpd=8
+local spinBAV=nil
+
+local fakeLagOn=false; local flConn=nil;   local flMs=100
+
+local strafeOn=false;  local stConn=nil
+local stDist=5;        local stPow=55
+local stLastPos=nil;   local stTraveled=0
+
+local espPlayers=false; local espDist=false
+local espR={}; local espM={}
+local pEsp={}; local rEsp={}
 
 local menuOpen=false; local activeTab="MOV"
+local guiMode="cs"
 
--- ══ GUI PARENT (CoreGui - поверх всего) ═══════════════════════════
-local GuiParent = nil
-
--- Пытаемся получить CoreGui
-local success, coreGui = pcall(function()
-    return game:GetService("CoreGui")
-end)
-if success and coreGui then
-    GuiParent = coreGui
+-- ══ GUI PARENT ════════════════════════════════════════════════════
+local GuiParent=LP:WaitForChild("PlayerGui")
+do
+    if typeof(gethui)=="function" then
+        local ok,h=pcall(gethui);if ok and h then GuiParent=h end
+    else
+        local ok,cg=pcall(function() return game:GetService("CoreGui") end)
+        if ok and cg then
+            local cw=pcall(function()
+                local t=Instance.new("Frame");t.Parent=cg;t:Destroy()
+            end)
+            if cw then GuiParent=cg end
+        end
+    end
 end
 
--- Если не получилось - пробуем gethui
-if not GuiParent and type(gethui) == "function" then
-    success, GuiParent = pcall(gethui)
-    if not success then GuiParent = nil end
+-- ══ SCREENGUI ═════════════════════════════════════════════════════
+local SG=Instance.new("ScreenGui")
+SG.Name="xclient_v9"; SG.ResetOnSpawn=false
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
+if typeof(syn)=="table" and typeof(syn.protect_gui)=="function" then
+    pcall(syn.protect_gui,SG)
 end
+SG.Parent=GuiParent
 
--- Запасной вариант - PlayerGui
-if not GuiParent then
-    GuiParent = LP:WaitForChild("PlayerGui")
-end
-
--- ══ SCREENGUI ════════════════════════════════════════════════════
-local SG = Instance.new("ScreenGui")
-SG.Name = "xclient_v8"
-SG.ResetOnSpawn = false
-SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-SG.DisplayOrder = 999  -- 👈 ДОБАВЬТЕ ЭТУ СТРОКУ
-if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then 
-    pcall(syn.protect_gui, SG) 
-end
-SG.Parent = GuiParent
-
--- ══ УТИЛИТЫ ══════════════════════════════════════════════════════
+-- ══ УТИЛИТЫ ═══════════════════════════════════════════════════════
 local function cr(r,p) local c=Instance.new("UICorner",p);c.CornerRadius=UDim.new(0,r);return c end
-local function mkSt(col,t,p) local s=Instance.new("UIStroke",p);s.Color=col;s.Thickness=t;return s end
+local function mSt(c,t,p) local s=Instance.new("UIStroke",p);s.Color=c;s.Thickness=t;return s end
 local function tw(o,t,pr) TweenSvc:Create(o,TweenInfo.new(t,Enum.EasingStyle.Quint),pr):Play() end
-local function mkLbl(par,txt,sz,fnt,col,xal)
+local function mLbl(par,txt,sz,fnt,col,xal)
     local l=Instance.new("TextLabel",par)
     l.BackgroundTransparency=1;l.Text=txt;l.TextSize=sz
     l.Font=fnt or Enum.Font.Gotham;l.TextColor3=col or TXT
     l.TextXAlignment=xal or Enum.TextXAlignment.Center
     l.ZIndex=(par.ZIndex or 10)+1;return l
 end
-local function mkBV(root,name)
-    local bv=Instance.new("BodyVelocity")
-    bv.Name=name;bv.MaxForce=Vector3.new(1e5,1e5,1e5)
-    bv.Velocity=Vector3.zero;bv.Parent=root;return bv
+local function mkBV(rt,nm)
+    local b=Instance.new("BodyVelocity")
+    b.Name=nm;b.MaxForce=Vector3.new(1e5,1e5,1e5)
+    b.Velocity=Vector3.zero;b.Parent=rt;return b
 end
-local function mkBG(root,name)
-    local bg=Instance.new("BodyGyro")
-    bg.Name=name;bg.MaxTorque=Vector3.new(0,1e5,0)
-    bg.P=5000;bg.CFrame=root.CFrame;bg.Parent=root;return bg
-end
-local function getCamDir()
+local function getCam()
     local cf=Cam.CFrame
-    local fwd=Vector3.new(cf.LookVector.X,0,cf.LookVector.Z)
-    local rgt=Vector3.new(cf.RightVector.X,0,cf.RightVector.Z)
-    if fwd.Magnitude>.001 then fwd=fwd.Unit end
-    if rgt.Magnitude>.001 then rgt=rgt.Unit end
-    return fwd,rgt
+    local f=Vector3.new(cf.LookVector.X,0,cf.LookVector.Z)
+    local r=Vector3.new(cf.RightVector.X,0,cf.RightVector.Z)
+    if f.Magnitude>.001 then f=f.Unit end
+    if r.Magnitude>.001 then r=r.Unit end
+    return f,r
 end
-
--- DRAG (универсальный — для окна и виджетов)
-local function makeDraggable(f)
-    local dragStart, startPos, dragging = nil, nil, false
-    
-    f.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = f.Position
+local function makeDrag(f)
+    local ds,sp2,dr
+    f.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then
+            dr=true;ds=i.Position;sp2=f.Position
         end
     end)
-    
-    UIS.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if input.UserInputType == Enum.UserInputType.MouseMovement or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            local delta = input.Position - dragStart
-            f.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
-                                   startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    UIS.InputChanged:Connect(function(i)
+        if not dr then return end
+        if i.UserInputType==Enum.UserInputType.MouseMovement
+        or i.UserInputType==Enum.UserInputType.Touch then
+            local d=i.Position-ds
+            f.Position=UDim2.new(sp2.X.Scale,sp2.X.Offset+d.X,
+                sp2.Y.Scale,sp2.Y.Offset+d.Y)
         end
     end)
-    
-    UIS.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then dr=false end
     end)
 end
 
--- ══ УВЕДОМЛЕНИЯ ══════════════════════════════════════════════════
+-- ══ УВЕДОМЛЕНИЯ ═══════════════════════════════════════════════════
 local ntfStk={}
 local function notify(title,body,acc)
-    acc=acc or themeColor
+    acc=acc or TC
     for _,f in ipairs(ntfStk) do
-        tw(f,.18,{Position=UDim2.new(1,-268,1,f.Position.Y.Offset-60)})
+        tw(f,.15,{Position=UDim2.new(1,-268,1,f.Position.Y.Offset-54)})
     end
-    local card=Instance.new("Frame",SG)
-    card.Size=UDim2.new(0,254,0,48);card.Position=UDim2.new(1,22,1,-62)
-    card.BackgroundColor3=NTFBG;card.BorderSizePixel=0;card.ZIndex=90
-    cr(4,card);mkSt(BDR,1,card)
-    local bar=Instance.new("Frame",card);bar.Size=UDim2.new(0,2,1,0)
-    bar.BackgroundColor3=acc;bar.BorderSizePixel=0;bar.ZIndex=91;cr(2,bar)
-    local tl=mkLbl(card,title,12,Enum.Font.GothamBold,WHT,Enum.TextXAlignment.Left)
-    tl.Size=UDim2.new(1,-14,0,20);tl.Position=UDim2.new(0,11,0,7);tl.ZIndex=91
-    local bl=mkLbl(card,body,10,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
-    bl.Size=UDim2.new(1,-14,0,16);bl.Position=UDim2.new(0,11,0,27);bl.ZIndex=91
-    TweenSvc:Create(card,TweenInfo.new(.28,Enum.EasingStyle.Back,Enum.EasingDirection.Out),
-        {Position=UDim2.new(1,-268,1,-62)}):Play()
-    table.insert(ntfStk,card)
-    task.delay(3.5,function()
-        for i,c in ipairs(ntfStk) do if c==card then table.remove(ntfStk,i) break end end
-        if not(card and card.Parent) then return end
-        tw(card,.2,{Position=UDim2.new(1,22,1,card.Position.Y.Offset)})
-        task.wait(.25);if card and card.Parent then card:Destroy() end
+    local c=Instance.new("Frame",SG)
+    c.Size=UDim2.new(0,254,0,46);c.Position=UDim2.new(1,22,1,-60)
+    c.BackgroundColor3=Color3.fromRGB(10,10,14);c.BorderSizePixel=0;c.ZIndex=90
+    cr(4,c);mSt(BDR,1,c)
+    local b=Instance.new("Frame",c);b.Size=UDim2.new(0,2,1,0)
+    b.BackgroundColor3=acc;b.BorderSizePixel=0;b.ZIndex=91;cr(2,b)
+    local tl=mLbl(c,title,12,Enum.Font.GothamBold,WHT,Enum.TextXAlignment.Left)
+    tl.Size=UDim2.new(1,-14,0,20);tl.Position=UDim2.new(0,11,0,6);tl.ZIndex=91
+    local bl=mLbl(c,body,10,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+    bl.Size=UDim2.new(1,-14,0,14);bl.Position=UDim2.new(0,11,0,26);bl.ZIndex=91
+    TweenSvc:Create(c,TweenInfo.new(.25,Enum.EasingStyle.Back,Enum.EasingDirection.Out),
+        {Position=UDim2.new(1,-268,1,-60)}):Play()
+    table.insert(ntfStk,c)
+    task.delay(3.2,function()
+        for i,v in ipairs(ntfStk) do if v==c then table.remove(ntfStk,i) break end end
+        if not(c and c.Parent) then return end
+        tw(c,.18,{Position=UDim2.new(1,22,1,c.Position.Y.Offset)})
+        task.wait(.2);if c and c.Parent then c:Destroy() end
     end)
 end
 
--- ══ СПЛЭШ ════════════════════════════════════════════════════════
-local Spl=Instance.new("Frame",SG);Spl.Size=UDim2.new(1,0,1,0)
-Spl.BackgroundColor3=BLK;Spl.BorderSizePixel=0;Spl.ZIndex=200
-local SplX=mkLbl(Spl,"x",88,Enum.Font.GothamBold,XBLUE)
-SplX.Size=UDim2.new(0,120,0,100);SplX.Position=UDim2.new(.5,-60,.5,-85)
-SplX.TextTransparency=1;SplX.ZIndex=201
-local SplN=mkLbl(Spl,"xclient",20,Enum.Font.GothamBold,WHT)
-SplN.Size=UDim2.new(0,280,0,28);SplN.Position=UDim2.new(.5,-140,.5,26)
-SplN.TextTransparency=1;SplN.ZIndex=201
-local SplV=mkLbl(Spl,"v8.0",12,Enum.Font.Gotham,TXTD)
-SplV.Size=UDim2.new(0,280,0,18);SplV.Position=UDim2.new(.5,-140,.5,56)
-SplV.TextTransparency=1;SplV.ZIndex=201
-local SplBar=Instance.new("Frame",Spl);SplBar.Size=UDim2.new(0,0,0,1)
-SplBar.Position=UDim2.new(.5,-100,.5,82);SplBar.BackgroundColor3=XBLUE
-SplBar.BorderSizePixel=0;SplBar.BackgroundTransparency=1;SplBar.ZIndex=201
+-- ══ СПЛЭШ ═════════════════════════════════════════════════════════
+local Spl=Instance.new("Frame",SG)
+Spl.Size=UDim2.new(1,0,1,0);Spl.BackgroundColor3=BLK
+Spl.BorderSizePixel=0;Spl.ZIndex=200
+local SX=mLbl(Spl,"x",88,Enum.Font.GothamBold,XBLUE)
+SX.Size=UDim2.new(0,120,0,100);SX.Position=UDim2.new(.5,-60,.5,-85)
+SX.TextTransparency=1;SX.ZIndex=201
+local SN=mLbl(Spl,"xclient",20,Enum.Font.GothamBold,WHT)
+SN.Size=UDim2.new(0,280,0,28);SN.Position=UDim2.new(.5,-140,.5,26)
+SN.TextTransparency=1;SN.ZIndex=201
+local SV=mLbl(Spl,"v9.0",12,Enum.Font.Gotham,TXTD)
+SV.Size=UDim2.new(0,280,0,18);SV.Position=UDim2.new(.5,-140,.5,56)
+SV.TextTransparency=1;SV.ZIndex=201
+local SBar=Instance.new("Frame",Spl);SBar.Size=UDim2.new(0,0,0,1)
+SBar.Position=UDim2.new(.5,-100,.5,82);SBar.BackgroundColor3=XBLUE
+SBar.BorderSizePixel=0;SBar.BackgroundTransparency=1;SBar.ZIndex=201
 task.spawn(function()
     task.wait(.1)
-    TweenSvc:Create(SplX,TweenInfo.new(.5,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    TweenSvc:Create(SX,TweenInfo.new(.5,Enum.EasingStyle.Back,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
     task.wait(.2)
-    TweenSvc:Create(SplN,TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
-    TweenSvc:Create(SplV,TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0.4}):Play()
-    TweenSvc:Create(SplBar,TweenInfo.new(.08),{BackgroundTransparency=0}):Play()
+    TweenSvc:Create(SN,TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0}):Play()
+    TweenSvc:Create(SV,TweenInfo.new(.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{TextTransparency=0.4}):Play()
+    TweenSvc:Create(SBar,TweenInfo.new(.08),{BackgroundTransparency=0}):Play()
     task.wait(.25)
-    TweenSvc:Create(SplBar,TweenInfo.new(.75,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,200,0,1)}):Play()
+    TweenSvc:Create(SBar,TweenInfo.new(.75,Enum.EasingStyle.Quint,Enum.EasingDirection.Out),{Size=UDim2.new(0,200,0,1)}):Play()
     task.wait(1.0)
-    for _,o in ipairs({SplX,SplN,SplV,SplBar}) do
-        TweenSvc:Create(o,TweenInfo.new(.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In),
-            {TextTransparency=1,BackgroundTransparency=1}):Play()
-    end
+    TweenSvc:Create(SX,TweenInfo.new(.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenSvc:Create(SN,TweenInfo.new(.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenSvc:Create(SV,TweenInfo.new(.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{TextTransparency=1}):Play()
+    TweenSvc:Create(SBar,TweenInfo.new(.2,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
     TweenSvc:Create(Spl,TweenInfo.new(.35,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{BackgroundTransparency=1}):Play()
     task.wait(.4);if Spl and Spl.Parent then Spl:Destroy() end
 end)
 
--- ══════════════════════════════════════════════════════════════════
---  ВСЯ ЛОГИКА ФУНКЦИЙ
--- ══════════════════════════════════════════════════════════════════
+-- ══ ВСЯ ЛОГИКА ФУНКЦИЙ ═══════════════════════════════════════════
 
--- ── MAGIC FLIGHT ──────────────────────────────────────────────────
+-- ── Magic Flight ──────────────────────────────────────────────────
 local function stopFlight()
     if not flyOn then return end;flyOn=false
     if flyConn then flyConn:Disconnect();flyConn=nil end
@@ -279,57 +249,53 @@ local function stopFlight()
     if flyBG and flyBG.Parent then flyBG:Destroy();flyBG=nil end
     pcall(function() Hum.PlatformStand=false end)
 end
-
 local function startFlight()
     if flyOn then return end;flyOn=true
-    flyBV=mkBV(Root,"xcFlyBV");flyBG=mkBG(Root,"xcFlyBG")
-    Hum.PlatformStand=true;wobT=0;wobS=0;dC=0;dTgt=0;dTmr=0
-    flyConn=RunService.Heartbeat:Connect(function(dt)
+    flyBV=mkBV(Root,"xcFlyBV")
+    local bg=Instance.new("BodyGyro")
+    bg.Name="xcFlyBG";bg.MaxTorque=Vector3.new(0,1e5,0)
+    bg.P=5000;bg.CFrame=Root.CFrame;bg.Parent=Root;flyBG=bg
+    Hum.PlatformStand=true;wT=0;wS=0;dC=0;dTgt=0;dTmr=0
+    flyConn=RunSvc.Heartbeat:Connect(function(dt)
         if not(Root and Root.Parent) or Hum.Health<=0 then stopFlight();return end
-        local fwd,rgt=getCamDir()
+        local fwd,rgt=getCam()
         local md=Hum.MoveDirection
         local dir
         if md.Magnitude>.05 then
             local v=fwd*(-md.Z)+rgt*md.X
             dir=v.Magnitude>.001 and v.Unit or fwd
-        else
-            dir=fwd
-        end
+        else dir=fwd end
         local vy=0
         if UIS:IsKeyDown(Enum.KeyCode.Space) then vy=20
-        elseif UIS:IsKeyDown(Enum.KeyCode.LeftShift)
-            or UIS:IsKeyDown(Enum.KeyCode.RightShift) then vy=-20 end
-        -- Покачивание
-        wobT=wobT+dt*1.6;local sinW=math.sin(wobT)*0.08
+        elseif UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift) then vy=-20 end
+        wT=wT+dt*1.6;local sinW=math.sin(wT)*0.08
         dTmr=dTmr-dt
         if dTmr<=0 then dTgt=(math.random()*2-1)*0.06;dTmr=0.4+math.random()*0.7 end
         dC=dC+(dTgt-dC)*0.04
-        wobS=wobS+dt*4.2
-        local step=(math.abs(math.sin(wobS))^3)*0.03*((math.floor(wobS/math.pi)%2==0)and 1 or -1)
-        local wobble=sinW+dC+step
-        local mult=resolverOn and resActive and 1.35 or 1
-        flyBV.Velocity=Vector3.new(dir.X*flySpeed*mult,vy+wobble*4,dir.Z*flySpeed*mult)
+        wS=wS+dt*4.2
+        local step=(math.abs(math.sin(wS))^3)*0.03*((math.floor(wS/math.pi)%2==0)and 1 or -1)
+        local mult=(resolverOn and resActive) and 1.35 or 1
+        flyBV.Velocity=Vector3.new(dir.X*flySpeed*mult,vy+(sinW+dC+step)*4,dir.Z*flySpeed*mult)
         flyBG.CFrame=CFrame.lookAt(Root.Position,Root.Position+dir)
     end)
 end
 
--- ── RESOLVER ──────────────────────────────────────────────────────
-RunService.Heartbeat:Connect(function()
-    if not resolverOn then resActive=false;resVel=0;return end
+-- ── Resolver loop ─────────────────────────────────────────────────
+RunSvc.Heartbeat:Connect(function()
+    if not resolverOn then resActive=false;return end
     local mp=Root and Root.Position or Vector3.zero
-    local found=false;local cl=math.huge
+    local cl=math.huge
     for _,pl in ipairs(Players:GetPlayers()) do
         if pl==LP then continue end
         local ch=pl.Character;if not ch then continue end
         local r=ch:FindFirstChild("HumanoidRootPart");if not r then continue end
         local d=(r.Position-mp).Magnitude;if d<cl then cl=d end
-        if d<=13 then found=true;break end
+        if d<=13 then resActive=true;return end
     end
-    if found then resActive=true
-    elseif resActive and cl>10 then resActive=false end
+    if cl>10 then resActive=false end
 end)
 
--- ── DAMAGE FLY ────────────────────────────────────────────────────
+-- ── Damage Fly ────────────────────────────────────────────────────
 local function updateDfHud(p)
     p=math.clamp(p,0,100)
     local col
@@ -340,20 +306,20 @@ local function updateDfHud(p)
     for i,s in ipairs(dfSegs) do
         s.BackgroundColor3=col;s.BackgroundTransparency=i<=vis and 0 or 0.88
     end
+    if dfPctLbl then dfPctLbl.Text=tostring(math.floor(p));dfPctLbl.TextColor3=col end
+    if dfHudFrame then dfHudFrame.Visible=dfOn end
 end
-
 local function stopDF()
     dfActive=false
     if dfConn then dfConn:Disconnect();dfConn=nil end
-    if dfBVObj and dfBVObj.Parent then dfBVObj:Destroy();dfBVObj=nil end
+    if dfBVO and dfBVO.Parent then dfBVO:Destroy();dfBVO=nil end
     if not flyOn then pcall(function() Hum.PlatformStand=false end) end
 end
-
 local function startDF()
     if dfActive or dfCharge<=0 then return end
     dfActive=true
-    dfBVObj=mkBV(Root,"xcDfBV");Hum.PlatformStand=true
-    dfConn=RunService.Heartbeat:Connect(function(dt)
+    dfBVO=mkBV(Root,"xcDfBV");Hum.PlatformStand=true
+    dfConn=RunSvc.Heartbeat:Connect(function(dt)
         if not(Root and Root.Parent) or Hum.Health<=0 then stopDF();return end
         if dfActive then
             dfCharge=math.max(0,dfCharge-10*dt);updateDfHud(dfCharge)
@@ -361,18 +327,15 @@ local function startDF()
                 notify("Damage Fly","Заряд кончился! Постой",Color3.fromRGB(255,80,60))
                 dfActive=false;stopDF();return
             end
-            local fwd,rgt=getCamDir()
-            local md=Hum.MoveDirection;local dir=fwd
-            if md.Magnitude>.05 then
-                local v=fwd*(-md.Z)+rgt*md.X;if v.Magnitude>.001 then dir=v.Unit end
-            end
+            local fwd,rgt=getCam();local md=Hum.MoveDirection;local dir=fwd
+            if md.Magnitude>.05 then local v=fwd*(-md.Z)+rgt*md.X;if v.Magnitude>.001 then dir=v.Unit end end
             local vy=0
             if UIS:IsKeyDown(Enum.KeyCode.Space) then vy=16
             elseif UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift) then vy=-16 end
-            dfBVObj.Velocity=Vector3.new(dir.X*18,vy,dir.Z*18)
+            dfBVO.Velocity=Vector3.new(dir.X*18,vy,dir.Z*18)
         else
             Hum.PlatformStand=false
-            if dfBVObj then dfBVObj.Velocity=Vector3.zero end
+            if dfBVO then dfBVO.Velocity=Vector3.zero end
             if Hum.MoveDirection.Magnitude<0.05 then
                 dfCharge=math.min(100,dfCharge+5*dt);updateDfHud(dfCharge)
                 if dfCharge>=100 then
@@ -383,7 +346,6 @@ local function startDF()
         end
     end)
 end
-
 local function connectDmg()
     if dfDmgConn then dfDmgConn:Disconnect() end
     local prev=Hum.Health
@@ -391,43 +353,33 @@ local function connectDmg()
         if not dfOn then return end;if hp<prev then startDF() end;prev=hp
     end)
 end
-
 local function setDF(v)
     dfOn=v
     if v then connectDmg()
     else stopDF();if dfDmgConn then dfDmgConn:Disconnect();dfDmgConn=nil end end
 end
 
--- ── INFINITE JUMP ─────────────────────────────────────────────────
-local function stopInfJump()
+-- ── Infinite Jump ─────────────────────────────────────────────────
+local function stopIJ()
     infJumpOn=false
-    if infJumpConn then infJumpConn:Disconnect();infJumpConn=nil end
+    if infJConn  then infJConn:Disconnect();infJConn=nil end
     if infStConn then infStConn:Disconnect();infStConn=nil end
 end
-
-local function startInfJump()
-    infJumpOn=true
-    infJumpConn=UIS.JumpRequest:Connect(function()
+local function startIJ()
+    if infJumpOn then return end;infJumpOn=true
+    infJConn=UIS.JumpRequest:Connect(function()
         local ch=LP.Character;local hm=ch and ch:FindFirstChild("Humanoid")
         if hm and infJumpOn then hm:ChangeState(Enum.HumanoidStateType.Jumping) end
     end)
-    infStConn=RunService.Heartbeat:Connect(function()
-        if not infJumpOn then return end
-        if UIS:IsKeyDown(Enum.KeyCode.Space) then
-            local ch=LP.Character;local hm=ch and ch:FindFirstChild("Humanoid")
-            if hm then pcall(function() hm:ChangeState(Enum.HumanoidStateType.Jumping) end) end
-        end
-    end)
 end
 
--- ── SPEED ─────────────────────────────────────────────────────────
+-- ── Speed ─────────────────────────────────────────────────────────
 local function stopSpeed()
     if speedConn then speedConn:Disconnect();speedConn=nil end
-    if jumpConn then jumpConn:Disconnect();jumpConn=nil end
+    if jumpConn  then jumpConn:Disconnect();jumpConn=nil end
     local hm=LP.Character and LP.Character:FindFirstChild("Humanoid")
     if hm then hm.WalkSpeed=16;hm.JumpPower=50 end
 end
-
 local function findTool(n)
     local ch=LP.Character;local bp=LP:FindFirstChild("Backpack")
     if ch then for _,v in ipairs(ch:GetChildren()) do
@@ -436,40 +388,38 @@ local function findTool(n)
         if v:IsA("Tool") and v.Name:lower():find(n:lower()) then return v,false end end end
     return nil,false
 end
-
 local function runSpeed(mode)
     stopSpeed()
     if mode=="collision" then
-        speedConn=RunService.Heartbeat:Connect(function()
+        speedConn=RunSvc.Heartbeat:Connect(function()
             local ch=LP.Character;local rt=ch and ch:FindFirstChild("HumanoidRootPart");if not rt then return end
             for _,pl in ipairs(Players:GetPlayers()) do
                 if pl==LP then continue end
                 local c2=pl.Character;if not c2 then continue end
                 local r2=c2:FindFirstChild("HumanoidRootPart");if not r2 then continue end
                 local diff=rt.Position-r2.Position
-                if diff.Magnitude<spCfg.collision.radius then
+                if diff.Magnitude<spCfg.collision.r then
                     local d=diff.Magnitude>.01 and diff.Unit or Vector3.new(0,0,1)
                     local bv=rt:FindFirstChild("xcSpBV") or mkBV(rt,"xcSpBV")
-                    bv.Velocity=d*spCfg.collision.speed+Vector3.new(0,10,0)
+                    bv.Velocity=d*spCfg.collision.s+Vector3.new(0,10,0)
                     task.delay(.35,function() if bv and bv.Parent then bv:Destroy() end end)
                 end
             end
         end)
-        notify("Speed","Collision активирован",themeColor)
+        notify("Speed","Collision",TC)
     elseif mode=="minijump" then
         local t2=0
-        jumpConn=RunService.Heartbeat:Connect(function(dt)
-            local ch=LP.Character;local rt=ch and ch:FindFirstChild("HumanoidRootPart")
-            if not rt then return end
+        jumpConn=RunSvc.Heartbeat:Connect(function(dt)
+            local ch=LP.Character;local rt=ch and ch:FindFirstChild("HumanoidRootPart");if not rt then return end
             t2=t2+dt
             if t2>=spCfg.minijump.rate then
                 t2=0
-                local bvJ=mkBV(rt,"xcMJBV")
-                bvJ.Velocity=Vector3.new(rt.AssemblyLinearVelocity.X,spCfg.minijump.power*1.8,rt.AssemblyLinearVelocity.Z)
-                task.delay(.18,function() if bvJ and bvJ.Parent then bvJ:Destroy() end end)
+                local bv=mkBV(rt,"xcMJBV")
+                bv.Velocity=Vector3.new(rt.AssemblyLinearVelocity.X,spCfg.minijump.p*1.8,rt.AssemblyLinearVelocity.Z)
+                task.delay(.18,function() if bv and bv.Parent then bv:Destroy() end end)
             end
         end)
-        notify("Speed","MiniJump активирован",themeColor)
+        notify("Speed","MiniJump",TC)
     elseif mode=="selfpush" then
         local tool,eq=findTool("пощечина")
         if not tool then tool,eq=findTool("slap") end
@@ -480,136 +430,122 @@ local function runSpeed(mode)
         end
         task.delay(.15,function()
             local rt=LP.Character and LP.Character:FindFirstChild("HumanoidRootPart");if not rt then return end
-            local bvP=mkBV(rt,"xcPushBV")
-            bvP.Velocity=rt.CFrame.LookVector*spCfg.selfpush.speed+Vector3.new(0,18,0)
-            task.delay(.5,function() if bvP and bvP.Parent then bvP:Destroy() end end)
+            local bv=mkBV(rt,"xcPushBV")
+            bv.Velocity=rt.CFrame.LookVector*spCfg.selfpush.s+Vector3.new(0,18,0)
+            task.delay(.5,function() if bv and bv.Parent then bv:Destroy() end end)
         end)
-        notify("Speed","Self Push!",themeColor)
+        notify("Speed","Self Push!",TC)
     end
 end
 
--- ── FLOAT ─────────────────────────────────────────────────────────
+-- ── Float ─────────────────────────────────────────────────────────
 local function stopFloat()
     if not floatOn then return end;floatOn=false
     if floatConn then floatConn:Disconnect();floatConn=nil end
     if floatBV and floatBV.Parent then floatBV:Destroy();floatBV=nil end
     if floatBG and floatBG.Parent then floatBG:Destroy();floatBG=nil end
-    frozenRot=nil
-    pcall(function() Hum.PlatformStand=false end)
+    frozenRot=nil;pcall(function() Hum.PlatformStand=false end)
 end
-
 local function startFloat()
     if floatOn then return end;floatOn=true
     frozenRot=Root.CFrame-Root.CFrame.Position
     floatBV=mkBV(Root,"xcFloatBV")
-    floatBG=Instance.new("BodyGyro")
-    floatBG.Name="xcFloatBG";floatBG.MaxTorque=Vector3.new(1e5,1e5,1e5)
-    floatBG.P=8000;floatBG.CFrame=Root.CFrame;floatBG.Parent=Root
+    local bg=Instance.new("BodyGyro")
+    bg.Name="xcFBG";bg.MaxTorque=Vector3.new(1e5,1e5,1e5)
+    bg.P=8000;bg.CFrame=Root.CFrame;bg.Parent=Root;floatBG=bg
     Hum.PlatformStand=true
-    floatConn=RunService.Heartbeat:Connect(function(dt)
+    floatConn=RunSvc.Heartbeat:Connect(function()
         if not(Root and Root.Parent) or Hum.Health<=0 then stopFloat();return end
-        local fwd,rgt=getCamDir()
-        local md=Hum.MoveDirection;local dir=fwd
-        if md.Magnitude>.05 then
-            local v=fwd*(-md.Z)+rgt*md.X;if v.Magnitude>.001 then dir=v.Unit end end
+        local fwd,rgt=getCam();local md=Hum.MoveDirection;local dir=fwd
+        if md.Magnitude>.05 then local v=fwd*(-md.Z)+rgt*md.X;if v.Magnitude>.001 then dir=v.Unit end end
         local vy=0
         if UIS:IsKeyDown(Enum.KeyCode.Space) then vy=18
         elseif UIS:IsKeyDown(Enum.KeyCode.LeftShift) or UIS:IsKeyDown(Enum.KeyCode.RightShift) then vy=-18 end
         floatBV.Velocity=Vector3.new(dir.X*flySpeed,vy,dir.Z*flySpeed)
-        floatBG.CFrame=CFrame.new(Root.Position)*frozenRot
+        if frozenRot then floatBG.CFrame=CFrame.new(Root.Position)*frozenRot end
     end)
 end
 
--- ── AUTO PLATFORM (сразу под ногами, быстрый) ──────────────────────
-local function stopAutoPlatform()
+-- ── Auto Platform ─────────────────────────────────────────────────
+local function stopAP()
     if not apOn then return end;apOn=false
     if apConn then apConn:Disconnect();apConn=nil end
     if apPart and apPart.Parent then apPart:Destroy();apPart=nil end
 end
-
-local function startAutoPlatform()
+local function startAP()
     if apOn then return end;apOn=true
-    -- Создаём платформу прямо под ногами
     apPart=Instance.new("Part")
-    apPart.Size=Vector3.new(5,.35,5)
-    apPart.Anchored=true;apPart.CanCollide=true
-    apPart.Material=Enum.Material.SmoothPlastic
-    apPart.Color=Color3.fromRGB(25,25,35)
-    -- Позиция: прямо под ступнями (Root - 3.1 = примерно под ногами стоящего)
-    apPart.CFrame=CFrame.new(Root.Position.X, Root.Position.Y-3.1, Root.Position.Z)
+    apPart.Size=Vector3.new(5,.35,5);apPart.Anchored=true;apPart.CanCollide=true
+    apPart.Material=Enum.Material.SmoothPlastic;apPart.Color=Color3.fromRGB(22,22,32)
+    apPart.CFrame=CFrame.new(Root.Position.X,Root.Position.Y-3.1,Root.Position.Z)
     apPart.Parent=WS
-
-    apConn=RunService.Heartbeat:Connect(function(dt)
-        if not apOn then stopAutoPlatform();return end
+    apConn=RunSvc.Heartbeat:Connect(function(dt)
+        if not apOn then stopAP();return end
         if not(apPart and apPart.Parent) then apOn=false;return end
-        local rp=Root.Position
-        local pp=apPart.Position
-        -- Платформа всегда под ногами по XZ
-        local targetX=rp.X; local targetZ=rp.Z
-        -- Поднимаем со скоростью apSpeed
-        local newY=pp.Y+apSpeed*dt
-        -- Но не выше чем (Root.Y - 3.1) чтобы всегда быть под ногами
-        local maxY=rp.Y-3.1
-        if newY>maxY then newY=maxY end
-        apPart.CFrame=CFrame.new(targetX,newY,targetZ)
+        local rp=Root.Position;local pp=apPart.Position
+        local newY=math.min(pp.Y+apSpd*dt,rp.Y-3.1)
+        apPart.CFrame=CFrame.new(rp.X,newY,rp.Z)
     end)
 end
 
--- ── LONG JUMP ────────────────────────────────────────────────────
-local function stopLongJump()
+-- ── Long Jump ─────────────────────────────────────────────────────
+local function stopLJ()
     if not ljOn then return end;ljOn=false
-    if ljConn then ljConn:Disconnect();ljConn=nil end
+    if ljConn  then ljConn:Disconnect();ljConn=nil end
     if ljStConn then ljStConn:Disconnect();ljStConn=nil end
     local hm=LP.Character and LP.Character:FindFirstChild("Humanoid")
-    if hm then hm.JumpPower=ljOrigPow end
+    if hm then hm.JumpPower=ljOrig end
 end
-
-local function startLongJump()
+local function startLJ()
     if ljOn then return end;ljOn=true
-    local hm=LP.Character and LP.Character:FindFirstChild("Humanoid")
-    if not hm then ljOn=false;return end
-    ljOrigPow=hm.JumpPower
-    hm.JumpPower=ljOrigPow*3
+    local hm=LP.Character and LP.Character:FindFirstChild("Humanoid");if not hm then ljOn=false;return end
+    ljOrig=hm.JumpPower;hm.JumpPower=ljOrig*3
     ljConn=UIS.JumpRequest:Connect(function()
         local ch=LP.Character;local h2=ch and ch:FindFirstChild("Humanoid")
         local rt=ch and ch:FindFirstChild("HumanoidRootPart");if not h2 or not rt then return end
-        local bvLJ=mkBV(rt,"xcLJBV")
-        bvLJ.Velocity=Vector3.new(rt.AssemblyLinearVelocity.X,ljOrigPow*3*0.9,rt.AssemblyLinearVelocity.Z)
+        local bv=mkBV(rt,"xcLJBV")
+        bv.Velocity=Vector3.new(rt.AssemblyLinearVelocity.X,ljOrig*2.7,rt.AssemblyLinearVelocity.Z)
         h2:ChangeState(Enum.HumanoidStateType.Jumping)
-        task.delay(.35,function() if bvLJ and bvLJ.Parent then bvLJ:Destroy() end end)
+        task.delay(.35,function() if bv and bv.Parent then bv:Destroy() end end)
     end)
-    ljStConn=RunService.Heartbeat:Connect(function()
+    ljStConn=RunSvc.Heartbeat:Connect(function()
         local ch=LP.Character;local h2=ch and ch:FindFirstChild("Humanoid")
-        if h2 and ljOn then h2.JumpPower=ljOrigPow*3 end
+        if h2 and ljOn then h2.JumpPower=ljOrig*3 end
     end)
 end
 
--- ── NOCLIP ────────────────────────────────────────────────────────
-local function stopNoclip()
-    if not noclipOn then return end;noclipOn=false
-    if noclipConn then noclipConn:Disconnect();noclipConn=nil end
-    local ch=LP.Character
-    if ch then for _,p in ipairs(ch:GetDescendants()) do
-        if p:IsA("BasePart") then p.CanCollide=true end end end
+-- ── Noclip ────────────────────────────────────────────────────────
+local ncOrigCC={}
+local function stopNC()
+    if not ncOn then return end;ncOn=false
+    if ncConn then ncConn:Disconnect();ncConn=nil end
+    local ch=LP.Character;if not ch then return end
+    for _,p in ipairs(ch:GetDescendants()) do
+        if p:IsA("BasePart") then
+            p.CanCollide=ncOrigCC[p] ~= nil and ncOrigCC[p] or true
+        end
+    end
+    ncOrigCC={}
 end
-
-local function startNoclip()
-    if noclipOn then return end;noclipOn=true
-    noclipConn=RunService.Stepped:Connect(function()
-        local ch=LP.Character;if not ch then return end
-        for _,p in ipairs(ch:GetDescendants()) do
+local function startNC()
+    if ncOn then return end;ncOn=true
+    local ch=LP.Character;if not ch then ncOn=false;return end
+    for _,p in ipairs(ch:GetDescendants()) do
+        if p:IsA("BasePart") then ncOrigCC[p]=p.CanCollide end
+    end
+    ncConn=RunSvc.Stepped:Connect(function()
+        local ch2=LP.Character;if not ch2 then return end
+        for _,p in ipairs(ch2:GetDescendants()) do
             if p:IsA("BasePart") then p.CanCollide=false end
         end
     end)
 end
 
--- ── ANTI-RAGDOLL ─────────────────────────────────────────────────
-local function stopAntiRagdoll()
-    arOn=false
-    if arConn then arConn:Disconnect();arConn=nil end
+-- ── Anti-Ragdoll ──────────────────────────────────────────────────
+local function stopAR()
+    arOn=false;if arConn then arConn:Disconnect();arConn=nil end
 end
-
-local function startAntiRagdoll()
+local function startAR()
     if arOn then return end;arOn=true
     arConn=Hum.StateChanged:Connect(function(_,new)
         if not arOn then return end
@@ -619,58 +555,139 @@ local function startAntiRagdoll()
     end)
 end
 
--- ── ANTI-RESET ───────────────────────────────────────────────────
-local function stopAntiReset()
-    antiResetOn=false
-    if antiResetConn then antiResetConn:Disconnect();antiResetConn=nil end
+-- ── Anti-Reset ────────────────────────────────────────────────────
+local function stopAntiRst()
+    antiRstOn=false;if antiRstConn then antiRstConn:Disconnect();antiRstConn=nil end
 end
-
-local function startAntiReset()
-    if antiResetOn then return end;antiResetOn=true
-    -- Переопределяем функцию Reset в StarterGui
-    pcall(function()
-        local sg=game:GetService("StarterGui")
-        sg:SetCoreGuiEnabled(Enum.CoreGuiType.All,true)
-    end)
-    -- Отключаем смерть от HealthChanged до нуля
-    antiResetConn=RunService.Heartbeat:Connect(function()
-        if not antiResetOn then return end
-        local ch=LP.Character;local hm=ch and ch:FindFirstChild("Humanoid")
-        if hm and hm.Health<=0.1 and hm.Health>0 then
-            hm.Health=hm.MaxHealth*0.1
-        end
-        -- Защита: если HP == 0 восстанавливаем
-        if hm and hm.Health==0 then
-            pcall(function() hm.Health=1 end)
+local function startAntiRst()
+    if antiRstOn then return end;antiRstOn=true
+    antiRstConn=RunSvc.Heartbeat:Connect(function()
+        if not antiRstOn then return end
+        local hm=LP.Character and LP.Character:FindFirstChild("Humanoid")
+        if hm and hm.Health<0.5 and hm.Health>0 then
+            pcall(function() hm.Health=hm.MaxHealth*0.1 end)
         end
     end)
 end
 
--- ── SMARTDODGE ────────────────────────────────────────────────────
+-- ── SmartDodge ────────────────────────────────────────────────────
 local function runDodge()
     local ch=LP.Character;local hrp=ch and ch:FindFirstChild("HumanoidRootPart")
     local hm=ch and ch:FindFirstChild("Humanoid");if not hrp or not hm then return end
-    if tick()-lastDodge<dCfg.Cooldown then return end
-    local bestD=dCfg.Radius;local bestF=nil;local bestV=Vector3.zero
+    if tick()-lastDodge<dCfg.CD then return end
+    local bD=dCfg.R;local bF=nil;local bV=Vector3.zero
     for _,pl in ipairs(Players:GetPlayers()) do
         if pl==LP then continue end
         local c2=pl.Character;if not c2 then continue end
         local r2=c2:FindFirstChild("HumanoidRootPart");if not r2 then continue end
         local v2=r2.AssemblyLinearVelocity
-        local fut=r2.Position+v2*dCfg.PredictTime
+        local fut=r2.Position+v2*dCfg.PT
         local d=(fut-hrp.Position).Magnitude
-        if d<bestD then bestD=d;bestF=fut;bestV=v2 end
+        if d<bD then bD=d;bF=fut;bV=v2 end
     end
-    if not bestF then return end
-    local away=(hrp.Position-bestF);if away.Magnitude<.01 then return end;away=away.Unit
-    local fd=(away*.8+hm.MoveDirection*.3);if fd.Magnitude>.01 then fd=fd.Unit else fd=away end
-    local force=dCfg.BaseForce+bestV.Magnitude*dCfg.SpeedMult
-    local bvD=mkBV(hrp,"xcDodgeBV")
-    bvD.Velocity=Vector3.new(fd.X*force,hrp.AssemblyLinearVelocity.Y,fd.Z*force)
-    task.delay(.22,function() if bvD and bvD.Parent then bvD:Destroy() end end)
+    if not bF then return end
+    local aw=(hrp.Position-bF);if aw.Magnitude<.01 then return end;aw=aw.Unit
+    local fd=(aw*.8+hm.MoveDirection*.3);if fd.Magnitude>.01 then fd=fd.Unit else fd=aw end
+    local force=dCfg.BF+bV.Magnitude*dCfg.SM
+    local bv=mkBV(hrp,"xcDgBV")
+    bv.Velocity=Vector3.new(fd.X*force,hrp.AssemblyLinearVelocity.Y,fd.Z*force)
+    task.delay(.22,function() if bv and bv.Parent then bv:Destroy() end end)
     lastDodge=tick()
 end
-RunService.Heartbeat:Connect(function() if dodgeOn then pcall(runDodge) end end)
+RunSvc.Heartbeat:Connect(function() if dodgeOn then pcall(runDodge) end end)
+
+-- ── Speed Walk ────────────────────────────────────────────────────
+local function stopSW()
+    swOn=false;if swConn then swConn:Disconnect();swConn=nil end
+    local hm=LP.Character and LP.Character:FindFirstChild("Humanoid")
+    if hm then hm.WalkSpeed=16 end
+end
+local function startSW()
+    if swOn then return end;swOn=true
+    swConn=RunSvc.Heartbeat:Connect(function()
+        local hm=LP.Character and LP.Character:FindFirstChild("Humanoid")
+        if hm and swOn then hm.WalkSpeed=swVal end
+    end)
+end
+
+-- ── High Jump ─────────────────────────────────────────────────────
+local function stopHJ()
+    hjOn=false;if hjConn then hjConn:Disconnect();hjConn=nil end
+end
+local function startHJ()
+    if hjOn then return end;hjOn=true
+    hjConn=UIS.JumpRequest:Connect(function()
+        if not hjOn then return end
+        local ch=LP.Character;local rt=ch and ch:FindFirstChild("HumanoidRootPart")
+        if not rt then return end
+        local bv=mkBV(rt,"xcHJBV")
+        bv.Velocity=Vector3.new(rt.AssemblyLinearVelocity.X,hjPow,rt.AssemblyLinearVelocity.Z)
+        task.delay(.3,function() if bv and bv.Parent then bv:Destroy() end end)
+    end)
+end
+
+-- ── Spin ──────────────────────────────────────────────────────────
+local function stopSpin()
+    spinOn=false
+    if spinConn then spinConn:Disconnect();spinConn=nil end
+    if spinBAV and spinBAV.Parent then spinBAV:Destroy();spinBAV=nil end
+end
+local function startSpin()
+    if spinOn then return end;spinOn=true
+    spinBAV=Instance.new("BodyAngularVelocity")
+    spinBAV.Name="xcSpinBAV";spinBAV.MaxTorque=Vector3.new(0,1e6,0)
+    spinBAV.AngularVelocity=Vector3.new(0,spinSpd*math.pi*2,0)
+    spinBAV.Parent=Root
+    spinConn=RunSvc.Heartbeat:Connect(function()
+        if not spinOn then stopSpin();return end
+        if spinBAV and spinBAV.Parent then
+            spinBAV.AngularVelocity=Vector3.new(0,spinSpd*math.pi*2,0)
+        end
+    end)
+end
+
+-- ── Fake Lag ──────────────────────────────────────────────────────
+local function stopFL()
+    fakeLagOn=false;if flConn then flConn:Disconnect();flConn=nil end
+end
+local function startFL()
+    if fakeLagOn then return end;fakeLagOn=true
+    local t=0
+    flConn=RunSvc.Heartbeat:Connect(function(dt)
+        if not fakeLagOn then return end
+        t=t+dt
+        if t>=(flMs/1000) then t=0;task.wait(flMs/1000) end
+    end)
+end
+
+-- ── Strafe ────────────────────────────────────────────────────────
+local function stopStrafe()
+    strafeOn=false
+    if stConn then stConn:Disconnect();stConn=nil end
+    stTraveled=0;stLastPos=nil
+end
+local function startStrafe()
+    if strafeOn then return end;strafeOn=true
+    stLastPos=Root and Root.Position or Vector3.zero;stTraveled=0
+    stConn=RunSvc.Heartbeat:Connect(function(dt)
+        if not strafeOn then return end
+        local ch=LP.Character;local rt=ch and ch:FindFirstChild("HumanoidRootPart")
+        local hm=ch and ch:FindFirstChild("Humanoid");if not rt or not hm then return end
+        local cur=Vector3.new(rt.Position.X,0,rt.Position.Z)
+        if stLastPos then
+            local delta=(cur-Vector3.new(stLastPos.X,0,stLastPos.Z)).Magnitude
+            stTraveled=stTraveled+delta
+        end
+        stLastPos=rt.Position
+        if stTraveled>=stDist and hm.MoveDirection.Magnitude>0.05 then
+            stTraveled=0
+            local fwd=getCam()
+            local bv=mkBV(rt,"xcStBV")
+            bv.Velocity=fwd*stPow+Vector3.new(0,12,0)
+            task.delay(.35,function() if bv and bv.Parent then bv:Destroy() end end)
+        end
+    end)
+end
 
 -- ── ESP ───────────────────────────────────────────────────────────
 local RMAP={["Legendary"]="Legendary",["Mythic"]="Mythic",["Brainrot God"]="BrainrotGod",["Secret"]="Secret"}
@@ -679,7 +696,6 @@ local RCOL={Legendary=Color3.fromRGB(255,215,0),Mythic=Color3.fromRGB(255,60,60)
 local MMAP={["Gold"]="Gold",["Diamond"]="Diamond",["Rainbow"]="Rainbow",["Bloodrot"]="Bloodrot"}
 local MCOL={Gold=Color3.fromRGB(255,215,0),Diamond=Color3.fromRGB(0,191,255),
     Rainbow=Color3.fromRGB(255,150,200),Bloodrot=Color3.fromRGB(180,0,0)}
-
 local function mkBB(adornee,text,col,sx,sy,yo)
     local bb=Instance.new("BillboardGui");bb.AlwaysOnTop=true
     bb.Size=UDim2.new(0,sx,0,sy);bb.StudsOffset=Vector3.new(0,yo or 3,0);bb.Adornee=adornee
@@ -688,30 +704,32 @@ local function mkBB(adornee,text,col,sx,sy,yo)
     lb.TextStrokeColor3=BLK;lb.TextStrokeTransparency=0;lb.TextScaled=true
     lb.Font=Enum.Font.GothamBold;bb.Parent=adornee;return bb
 end
-
 local function updateESP()
     local myPos=Root and Root.Position or Vector3.zero
     for _,pl in ipairs(Players:GetPlayers()) do
         if pl==LP then continue end
         if not espPlayers then
-            if playerEsp[pl] and playerEsp[pl].Parent then playerEsp[pl]:Destroy() end
-            playerEsp[pl]=nil;continue
+            if pEsp[pl] and pEsp[pl].Parent then pEsp[pl]:Destroy() end
+            pEsp[pl]=nil;continue
         end
         local ch=pl.Character;if not ch then continue end
         local rt=ch:FindFirstChild("HumanoidRootPart");if not rt then continue end
-        if not(playerEsp[pl] and playerEsp[pl].Parent) then
-            playerEsp[pl]=mkBB(rt,pl.DisplayName,WHT,180,26,3)
+        if not(pEsp[pl] and pEsp[pl].Parent) then
+            pEsp[pl]=mkBB(rt,pl.DisplayName,WHT,180,26,3)
         end
-        if espShowDist then
-            local lb=playerEsp[pl] and playerEsp[pl]:FindFirstChildWhichIsA("TextLabel")
+        if espDist then
+            local lb=pEsp[pl] and pEsp[pl]:FindFirstChildWhichIsA("TextLabel")
             if lb then
                 local d=math.floor((rt.Position-myPos).Magnitude)
                 lb.Text=pl.DisplayName.."  ["..d.."st]"
             end
+        else
+            local lb=pEsp[pl] and pEsp[pl]:FindFirstChildWhichIsA("TextLabel")
+            if lb then lb.Text=pl.DisplayName end
         end
     end
-    local anyR=espRarity.Legendary or espRarity.Mythic or espRarity.BrainrotGod or espRarity.Secret
-    local anyM=espMut.Gold or espMut.Diamond or espMut.Rainbow or espMut.Bloodrot
+    local anyR=espR.Legendary or espR.Mythic or espR.BrainrotGod or espR.Secret
+    local anyM=espM.Gold or espM.Diamond or espM.Rainbow or espM.Bloodrot
     local plots=WS:FindFirstChild("Plots")
     if (anyR or anyM) and plots then
         for _,plot in pairs(plots:GetChildren()) do
@@ -720,252 +738,216 @@ local function updateESP()
                     local rk=RMAP[child.Text];if not rk then continue end
                     local pm=child.Parent and child.Parent.Parent;if not pm then continue end
                     local key=tostring(pm)
-                    if espRarity[rk] then
-                        if not(rarityEsp[key.."_r"] and rarityEsp[key.."_r"].Parent) then
+                    if espR[rk] then
+                        if not(rEsp[key.."_r"] and rEsp[key.."_r"].Parent) then
                             local dn=child.Parent and child.Parent:FindFirstChild("DisplayName")
-                            rarityEsp[key.."_r"]=mkBB(pm,dn and dn.Text or child.Text,RCOL[rk],160,44,3)
+                            rEsp[key.."_r"]=mkBB(pm,dn and dn.Text or child.Text,RCOL[rk],160,44,3)
                         end
-                    else if rarityEsp[key.."_r"] and rarityEsp[key.."_r"].Parent then
-                        rarityEsp[key.."_r"]:Destroy();rarityEsp[key.."_r"]=nil end end
+                    else
+                        if rEsp[key.."_r"] and rEsp[key.."_r"].Parent then
+                            rEsp[key.."_r"]:Destroy();rEsp[key.."_r"]=nil end
+                    end
                     local ml=child.Parent and child.Parent:FindFirstChild("Mutation")
                     if ml and ml:IsA("TextLabel") then
                         local mk=MMAP[ml.Text]
-                        if mk and espMut[mk] then
-                            if not(rarityEsp[key.."_m"] and rarityEsp[key.."_m"].Parent) then
-                                rarityEsp[key.."_m"]=mkBB(pm,ml.Text,MCOL[mk],120,28,6) end
-                        else if rarityEsp[key.."_m"] and rarityEsp[key.."_m"].Parent then
-                            rarityEsp[key.."_m"]:Destroy();rarityEsp[key.."_m"]=nil end end
+                        if mk and espM[mk] then
+                            if not(rEsp[key.."_m"] and rEsp[key.."_m"].Parent) then
+                                rEsp[key.."_m"]=mkBB(pm,ml.Text,MCOL[mk],120,28,6) end
+                        else
+                            if rEsp[key.."_m"] and rEsp[key.."_m"].Parent then
+                                rEsp[key.."_m"]:Destroy();rEsp[key.."_m"]=nil end
+                        end
                     end
                 end
             end
         end
     end
 end
-task.spawn(function() while true do task.wait(.4);pcall(updateESP) end end)
+task.spawn(function() while true do task.wait(.5);pcall(updateESP) end end)
 
--- ── KEYBINDS ──────────────────────────────────────────────────────
-local function registerKB(kc,fn) keybinds[kc]=fn end
-UIS.InputBegan:Connect(function(input,gp)
-    if gp or not keybindOn then return end
-    local fn=keybinds[input.KeyCode];if fn then pcall(fn) end
+-- ── Keybinds ──────────────────────────────────────────────────────
+local kbOn=true; local kbs={}
+local function regKB(kc,fn) kbs[kc]=fn end
+UIS.InputBegan:Connect(function(inp,gp)
+    if gp or not kbOn then return end
+    local fn=kbs[inp.KeyCode];if fn then pcall(fn) end
 end)
-registerKB(Enum.KeyCode.F,function()
+regKB(Enum.KeyCode.F,function()
     flyOn=not flyOn;if flyOn then startFlight() else stopFlight() end
-    notify("KB [F]",flyOn and "Flight ON" or "Flight OFF",themeColor)
+    notify("KB [F]",flyOn and "Flight ON" or "Flight OFF",TC)
 end)
-registerKB(Enum.KeyCode.G,function()
-    noclipOn=not noclipOn;if noclipOn then startNoclip() else stopNoclip() end
-    notify("KB [G]",noclipOn and "Noclip ON" or "Noclip OFF",themeColor)
+regKB(Enum.KeyCode.G,function()
+    ncOn=not ncOn;if ncOn then startNC() else stopNC() end
+    notify("KB [G]",ncOn and "Noclip ON" or "Noclip OFF",TC)
 end)
-registerKB(Enum.KeyCode.H,function()
-    infJumpOn=not infJumpOn;if infJumpOn then startInfJump() else stopInfJump() end
-    notify("KB [H]",infJumpOn and "InfJump ON" or "InfJump OFF",themeColor)
+regKB(Enum.KeyCode.H,function()
+    infJumpOn=not infJumpOn;if infJumpOn then startIJ() else stopIJ() end
+    notify("KB [H]",infJumpOn and "InfJump ON" or "InfJump OFF",TC)
 end)
 
--- ── СМЕРТЬ / ВОЗРОЖДЕНИЕ ──────────────────────────────────────────
+-- ── Смерть / Возрождение ──────────────────────────────────────────
 local function onDied()
     stopFlight();stopDF();stopSpeed();stopFloat()
-    stopAutoPlatform();stopLongJump();stopInfJump()
-    stopNoclip();stopAntiRagdoll();stopAntiReset()
+    stopAP();stopLJ();stopIJ();stopNC()
+    stopAR();stopAntiRst();stopSW();stopHJ()
+    stopSpin();stopFL();stopStrafe()
 end
 Hum.Died:Connect(onDied)
 LP.CharacterAdded:Connect(function(nc)
-    stopFlight();stopDF();stopSpeed();stopFloat()
-    stopAutoPlatform();stopLongJump();stopInfJump()
+    onDied()
     if dfDmgConn then dfDmgConn:Disconnect();dfDmgConn=nil end
     Char=nc;Hum=nc:WaitForChild("Humanoid");Root=nc:WaitForChild("HumanoidRootPart")
     if dfOn then connectDmg() end
     task.wait(.5)
-    if infJumpOn then startInfJump() end
-    if ljOn then startLongJump() end
-    if noclipOn then startNoclip() end
-    if arOn then startAntiRagdoll() end
-    if antiResetOn then startAntiReset() end
+    if infJumpOn then startIJ() end
+    if ljOn      then startLJ() end
+    if ncOn      then startNC() end
+    if arOn      then startAR() end
+    if antiRstOn then startAntiRst() end
+    if swOn      then startSW() end
+    if hjOn      then startHJ() end
+    if strafeOn  then startStrafe() end
     Hum.Died:Connect(onDied)
+    Cam=WS.CurrentCamera
 end)
 
--- ══════════════════════════════════════════════════════════════════
---  GUI
--- ══════════════════════════════════════════════════════════════════
+-- ══ ИКОНКА X ══════════════════════════════════════════════════════
+local IB=Instance.new("TextButton",SG)
+IB.Size=UDim2.new(0,52,0,52);IB.Position=UDim2.new(0,16,0,16)
+IB.BackgroundColor3=BLK;IB.BorderSizePixel=0
+IB.Text="";IB.AutoButtonColor=false;IB.ZIndex=10
+cr(26,IB)
+local IRing=mSt(BDR,1.8,IB);regTC(IRing,"Color")
+local IX=mLbl(IB,"x",26,Enum.Font.GothamBold,XBLUE)
+IX.Size=UDim2.new(1,0,1,0);IX.ZIndex=11
+IB.MouseEnter:Connect(function() tw(IRing,.15,{Color=XBLUE});tw(IX,.15,{TextColor3=WHT}) end)
+IB.MouseLeave:Connect(function() tw(IRing,.15,{Color=TC});tw(IX,.15,{TextColor3=XBLUE}) end)
 
--- ── ИКОНКА X ──────────────────────────────────────────────────────
-local IconBtn=Instance.new("TextButton",SG)
-IconBtn.Size=UDim2.new(0,52,0,52);IconBtn.Position=UDim2.new(0,16,0,16)
-IconBtn.BackgroundColor3=BLK;IconBtn.BorderSizePixel=0
-IconBtn.Text="";IconBtn.AutoButtonColor=false;IconBtn.ZIndex=10
-cr(26,IconBtn)
-local IcRing=mkSt(BDR,1.8,IconBtn);regTheme(IcRing,"Color")
-local IcX=mkLbl(IconBtn,"x",26,Enum.Font.GothamBold,XBLUE)
-IcX.Size=UDim2.new(1,0,1,0);IcX.ZIndex=11
-IconBtn.MouseEnter:Connect(function() tw(IcRing,.15,{Color=XBLUE});tw(IcX,.15,{TextColor3=WHT}) end)
-IconBtn.MouseLeave:Connect(function() tw(IcRing,.15,{Color=themeColor});tw(IcX,.15,{TextColor3=XBLUE}) end)
+-- ══ ГЛАВНОЕ ОКНО ══════════════════════════════════════════════════
+local WW,WH,SW2=500,360,130
+local MF=Instance.new("Frame",SG)
+MF.Size=UDim2.new(0,WW,0,WH);MF.Position=UDim2.new(.5,-WW/2,-1,0)
+MF.BackgroundColor3=BG;MF.BorderSizePixel=0;MF.ZIndex=10;MF.Visible=false
+local MCr=cr(10,MF);local MSt=mSt(BDR,1,MF);regTC(MSt,"Color")
 
--- ── ГЛАВНОЕ ОКНО ──────────────────────────────────────────────────
-local WIN_W,WIN_H,SIDE_W=500,360,130
-local MainFrame=Instance.new("Frame",SG)
-MainFrame.Size=UDim2.new(0,WIN_W,0,WIN_H);MainFrame.Position=UDim2.new(.5,-WIN_W/2,-1,0)
-MainFrame.BackgroundColor3=BG;MainFrame.BorderSizePixel=0;MainFrame.ZIndex=10;MainFrame.Visible=false
-local MainCr=cr(10,MainFrame);local MainSt=mkSt(BDR,1,MainFrame);regTheme(MainSt,"Color")
+local Sd=Instance.new("Frame",MF)
+Sd.Size=UDim2.new(0,SW2,1,0);Sd.BackgroundColor3=SIDE;Sd.BorderSizePixel=0;Sd.ZIndex=11;cr(10,Sd)
+local SdFix=Instance.new("Frame",Sd)
+SdFix.Size=UDim2.new(0,14,1,0);SdFix.Position=UDim2.new(1,-14,0,0)
+SdFix.BackgroundColor3=SIDE;SdFix.BorderSizePixel=0;SdFix.ZIndex=12
+local SDv=Instance.new("Frame",MF)
+SDv.Size=UDim2.new(0,1,1,0);SDv.Position=UDim2.new(0,SW2,0,0)
+SDv.BackgroundColor3=BDR;SDv.BorderSizePixel=0;SDv.ZIndex=11
 
-local Side=Instance.new("Frame",MainFrame)
-Side.Size=UDim2.new(0,SIDE_W,1,0);Side.BackgroundColor3=SIDE;Side.BorderSizePixel=0;Side.ZIndex=11;cr(10,Side)
-local SFix=Instance.new("Frame",Side)
-SFix.Size=UDim2.new(0,14,1,0);SFix.Position=UDim2.new(1,-14,0,0)
-SFix.BackgroundColor3=SIDE;SFix.BorderSizePixel=0;SFix.ZIndex=12
-local SDiv=Instance.new("Frame",MainFrame)
-SDiv.Size=UDim2.new(0,1,1,0);SDiv.Position=UDim2.new(0,SIDE_W,0,0)
-SDiv.BackgroundColor3=BDR;SDiv.BorderSizePixel=0;SDiv.ZIndex=11
+local LX=mLbl(Sd,"x",24,Enum.Font.GothamBold,XBLUE)
+LX.Size=UDim2.new(0,28,0,28);LX.Position=UDim2.new(0,10,0,12);LX.ZIndex=13
+local LW=mLbl(Sd,"client",11,Enum.Font.GothamBold,Color3.fromRGB(130,130,150),Enum.TextXAlignment.Left)
+LW.Size=UDim2.new(1,-44,0,14);LW.Position=UDim2.new(0,40,0,17);LW.ZIndex=13
+local LV=mLbl(Sd,"v9.0",9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+LV.Size=UDim2.new(1,0,0,12);LV.Position=UDim2.new(0,10,0,44);LV.ZIndex=13
+local LD=Instance.new("Frame",Sd)
+LD.Size=UDim2.new(1,-18,0,1);LD.Position=UDim2.new(0,9,0,62)
+LD.BackgroundColor3=BDR;LD.BorderSizePixel=0;LD.ZIndex=13
 
-local Lx=mkLbl(Side,"x",24,Enum.Font.GothamBold,XBLUE)
-Lx.Size=UDim2.new(0,28,0,28);Lx.Position=UDim2.new(0,10,0,12);Lx.ZIndex=13
-local Lw=mkLbl(Side,"client",11,Enum.Font.GothamBold,Color3.fromRGB(130,130,150),Enum.TextXAlignment.Left)
-Lw.Size=UDim2.new(1,-44,0,14);Lw.Position=UDim2.new(0,40,0,17);Lw.ZIndex=13
-local Lv=mkLbl(Side,"v8.0",9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
-Lv.Size=UDim2.new(1,0,0,12);Lv.Position=UDim2.new(0,10,0,44);Lv.ZIndex=13
-local Ld=Instance.new("Frame",Side)
-Ld.Size=UDim2.new(1,-18,0,1);Ld.Position=UDim2.new(0,9,0,62)
-Ld.BackgroundColor3=BDR;Ld.BorderSizePixel=0;Ld.ZIndex=13
+local Ct=Instance.new("Frame",MF)
+Ct.Size=UDim2.new(1,-SW2-1,1,0);Ct.Position=UDim2.new(0,SW2+1,0,0)
+Ct.BackgroundTransparency=1;Ct.BorderSizePixel=0;Ct.ZIndex=11
 
-local Content=Instance.new("Frame",MainFrame)
-Content.Size=UDim2.new(1,-SIDE_W-1,1,0);Content.Position=UDim2.new(0,SIDE_W+1,0,0)
-Content.BackgroundTransparency=1;Content.BorderSizePixel=0;Content.ZIndex=11
-
--- ── ВКЛАДКИ ───────────────────────────────────────────────────────
+-- ══ ВКЛАДКИ ═══════════════════════════════════════════════════════
 local TABS={"MOV","COM","VISUAL","THEME"}
-local TAB_ICO={MOV="✈",COM="⚔",VISUAL="◈",THEME="🎨"}
-local tabPages={};local tabBtns={};local tabInds={}
-local sideY=74
+local TICO={MOV="✈",COM="⚔",VISUAL="◈",THEME="🎨"}
+local tPgs={};local tBtns={};local tInds={}
+local sY=74
 
-for _,name in ipairs(TABS) do
-    local btn=Instance.new("TextButton",Side)
-    btn.Size=UDim2.new(1,-14,0,34);btn.Position=UDim2.new(0,7,0,sideY)
+for _,nm in ipairs(TABS) do
+    local btn=Instance.new("TextButton",Sd)
+    btn.Size=UDim2.new(1,-14,0,34);btn.Position=UDim2.new(0,7,0,sY)
     btn.BackgroundTransparency=1;btn.BorderSizePixel=0
     btn.Text="";btn.AutoButtonColor=false;btn.ZIndex=13;cr(6,btn)
-    local ico=mkLbl(btn,TAB_ICO[name],13,Enum.Font.Gotham,TXTD)
+    local ico=mLbl(btn,TICO[nm],13,Enum.Font.Gotham,TXTD)
     ico.Size=UDim2.new(0,22,1,0);ico.Position=UDim2.new(0,8,0,0);ico.ZIndex=14
-    local tx=mkLbl(btn,name,11,Enum.Font.GothamBold,TXTD,Enum.TextXAlignment.Left)
+    local tx=mLbl(btn,nm,11,Enum.Font.GothamBold,TXTD,Enum.TextXAlignment.Left)
     tx.Size=UDim2.new(1,-36,1,0);tx.Position=UDim2.new(0,32,0,0);tx.ZIndex=14
     local ind=Instance.new("Frame",btn)
     ind.Size=UDim2.new(0,2,0.55,0);ind.Position=UDim2.new(0,0,0.225,0)
     ind.BorderSizePixel=0;ind.ZIndex=14;ind.BackgroundTransparency=1;cr(2,ind)
-    regTheme(ind,"BackgroundColor3")
-    local pg=Instance.new("ScrollingFrame",Content)
+    regTC(ind,"BackgroundColor3")
+    local pg=Instance.new("ScrollingFrame",Ct)
     pg.Size=UDim2.new(1,0,1,0);pg.BackgroundTransparency=1
     pg.BorderSizePixel=0;pg.ScrollBarThickness=2;pg.ScrollBarImageColor3=BDR
     pg.CanvasSize=UDim2.new(0,0,0,0);pg.AutomaticCanvasSize=Enum.AutomaticSize.Y
     pg.Visible=false;pg.ZIndex=12
-    local lay=Instance.new("UIListLayout",pg)
-    lay.Padding=UDim.new(0,0);lay.SortOrder=Enum.SortOrder.LayoutOrder
+    local lay=Instance.new("UIListLayout",pg);lay.Padding=UDim.new(0,0)
+    lay.SortOrder=Enum.SortOrder.LayoutOrder
     Instance.new("UIPadding",pg).PaddingBottom=UDim.new(0,8)
-    tabPages[name]=pg;tabBtns[name]={btn=btn,ico=ico,tx=tx};tabInds[name]=ind
-    sideY=sideY+38
+    tPgs[nm]=pg;tBtns[nm]={b=btn,i=ico,t=tx};tInds[nm]=ind;sY=sY+38
 end
 
-local function switchTab(name)
-    activeTab=name
+local function swTab(nm)
+    activeTab=nm
     for _,n in ipairs(TABS) do
-        local a=(n==name);local d=tabBtns[n]
-        tw(d.btn,.15,{BackgroundTransparency=a and 0.82 or 1,BackgroundColor3=a and BG3 or BG})
-        tw(d.ico,.15,{TextColor3=a and XBLUE or TXTD})
-        tw(d.tx,.15,{TextColor3=a and WHT or TXTD})
-        tw(tabInds[n],.15,{BackgroundTransparency=a and 0 or 1})
-        tabPages[n].Visible=a
+        local a=(n==nm);local d=tBtns[n]
+        tw(d.b,.15,{BackgroundTransparency=a and 0.82 or 1,BackgroundColor3=a and BG3 or BG})
+        tw(d.i,.15,{TextColor3=a and XBLUE or TXTD})
+        tw(d.t,.15,{TextColor3=a and WHT or TXTD})
+        tw(tInds[n],.15,{BackgroundTransparency=a and 0 or 1})
+        tPgs[n].Visible=a
     end
 end
-for _,n in ipairs(TABS) do
-    tabBtns[n].btn.MouseButton1Click:Connect(function() switchTab(n) end)
-    tabBtns[n].btn.MouseEnter:Connect(function()
-        if activeTab~=n then tw(tabBtns[n].tx,.1,{TextColor3=Color3.fromRGB(140,140,155)}) end end)
-    tabBtns[n].btn.MouseLeave:Connect(function()
-        if activeTab~=n then tw(tabBtns[n].tx,.1,{TextColor3=TXTD}) end end)
-end
+for _,n in ipairs(TABS) do tBtns[n].b.MouseButton1Click:Connect(function() swTab(n) end) end
 
--- ── PIN СИСТЕМА ────────────────────────────────────────────────────
-local pinWidgets={}
-local pinCounter=0
-
-local function createPinWidget(label,toggleFn)
-    -- Если уже открыт — закрываем
-    if pinWidgets[label] then
-        pinWidgets[label]:Destroy();pinWidgets[label]=nil;return
-    end
-    pinCounter=pinCounter+1
-    -- Каждый новый виджет смещён чтобы не накладывались
-    local offsetX = 20 + ((pinCounter-1)%5)*10
-    local offsetY = 80 + ((pinCounter-1)%4)*60
-
+-- ══ PIN СИСТЕМА ═══════════════════════════════════════════════════
+local pinW={}; local pinCnt=0
+local function pinWidget(label,togFn)
+    if pinW[label] then pinW[label]:Destroy();pinW[label]=nil;return end
+    pinCnt=pinCnt+1
+    local ox=20+((pinCnt-1)%6)*12
+    local oy=80+((pinCnt-1)%5)*56
     local pw=Instance.new("Frame",SG)
-    pw.Name="PinWidget_"..label
-    pw.Size=UDim2.new(0,200,0,48)
-    pw.Position=UDim2.new(0,offsetX,0,offsetY)  -- ФИКСИРОВАННАЯ позиция, не center
-    pw.BackgroundColor3=BLK;pw.BorderSizePixel=0;pw.ZIndex=60;pw.Active=true
-    cr(8,pw)
-
-    -- Градиент
-    local grad=Instance.new("UIGradient",pw)
-    grad.Color=ColorSequence.new{
+    pw.Size=UDim2.new(0,200,0,46);pw.Position=UDim2.new(0,ox,0,oy)
+    pw.BackgroundColor3=BLK;pw.BorderSizePixel=0;pw.ZIndex=60;pw.Active=true;cr(8,pw)
+    Instance.new("UIGradient",pw).Color=ColorSequence.new{
         ColorSequenceKeypoint.new(0,Color3.fromRGB(22,22,30)),
         ColorSequenceKeypoint.new(1,Color3.fromRGB(10,10,16)),
     }
-    grad.Rotation=90
-
-    -- Цветная обводка темы
-    local pst=mkSt(themeColor,1.5,pw);regTheme(pst,"Color")
-
-    -- Заголовок
-    local ptl=mkLbl(pw,label,11,Enum.Font.GothamBold,WHT,Enum.TextXAlignment.Left)
+    local pst=mSt(TC,1.5,pw);regTC(pst,"Color")
+    local ptl=mLbl(pw,label,11,Enum.Font.GothamBold,WHT,Enum.TextXAlignment.Left)
     ptl.Size=UDim2.new(1,-60,0,20);ptl.Position=UDim2.new(0,10,0,6);ptl.ZIndex=61
-
-    -- Пилюля
-    local ppill=Instance.new("Frame",pw)
-    ppill.Size=UDim2.new(0,36,0,18);ppill.Position=UDim2.new(1,-48,0.5,-9)
-    ppill.BackgroundColor3=BDR;ppill.BorderSizePixel=0;ppill.ZIndex=61;cr(9,ppill)
-    local pknob=Instance.new("Frame",ppill)
-    pknob.Size=UDim2.new(0,12,0,12);pknob.Position=UDim2.new(0,3,0.5,-6)
-    pknob.BackgroundColor3=TXTD;pknob.BorderSizePixel=0;pknob.ZIndex=62;cr(6,pknob)
-
-    local pState=false
-    local function rp2()
-        tw(ppill,.15,{BackgroundColor3=pState and themeColor or BDR})
-        tw(pknob,.15,{Position=pState and UDim2.new(0,21,0.5,-6) or UDim2.new(0,3,0.5,-6),
-            BackgroundColor3=pState and WHT or TXTD})
+    local pp=Instance.new("Frame",pw)
+    pp.Size=UDim2.new(0,36,0,18);pp.Position=UDim2.new(1,-48,0.5,-9)
+    pp.BackgroundColor3=BDR;pp.BorderSizePixel=0;pp.ZIndex=61;cr(9,pp)
+    local pk=Instance.new("Frame",pp)
+    pk.Size=UDim2.new(0,12,0,12);pk.Position=UDim2.new(0,3,0.5,-6)
+    pk.BackgroundColor3=TXTD;pk.BorderSizePixel=0;pk.ZIndex=62;cr(6,pk)
+    local pOn=false
+    local function prp()
+        tw(pp,.15,{BackgroundColor3=pOn and TC or BDR})
+        tw(pk,.15,{Position=pOn and UDim2.new(0,21,0.5,-6) or UDim2.new(0,3,0.5,-6),
+            BackgroundColor3=pOn and WHT or TXTD})
     end
-    rp2()
-
-    -- Кнопка закрыть
-    local pclose=Instance.new("TextButton",pw)
-    pclose.Size=UDim2.new(0,16,0,16);pclose.Position=UDim2.new(1,-18,0,4)
-    pclose.BackgroundTransparency=1;pclose.Text="×";pclose.TextColor3=TXTD
-    pclose.TextSize=14;pclose.Font=Enum.Font.GothamBold;pclose.ZIndex=62
-    pclose.MouseButton1Click:Connect(function() pw:Destroy();pinWidgets[label]=nil end)
-
-    -- Кнопка включения (большая область)
+    local pcl=Instance.new("TextButton",pw)
+    pcl.Size=UDim2.new(0,16,0,16);pcl.Position=UDim2.new(1,-18,0,4)
+    pcl.BackgroundTransparency=1;pcl.Text="×";pcl.TextColor3=TXTD
+    pcl.TextSize=14;pcl.Font=Enum.Font.GothamBold;pcl.ZIndex=62
+    pcl.MouseButton1Click:Connect(function() pw:Destroy();pinW[label]=nil end)
     local pb=Instance.new("TextButton",pw)
     pb.Size=UDim2.new(1,-20,1,0);pb.BackgroundTransparency=1;pb.Text="";pb.ZIndex=62
-    pb.MouseButton1Click:Connect(function()
-        pState=not pState;rp2()
-        if toggleFn then toggleFn(pState) end
-    end)
-
-    -- DRAG: делаем ИМЕННО этот виджет перетаскиваемым
-    makeDraggable(pw)
-
-    pinWidgets[label]=pw
+    pb.MouseButton1Click:Connect(function() pOn=not pOn;prp();if togFn then togFn(pOn) end end)
+    makeDrag(pw);pinW[label]=pw
 end
 
--- ── ФАБРИКИ ЭЛЕМЕНТОВ МЕНЮ ────────────────────────────────────────
-local function secLbl(pg,txt,ord)
+-- ══ ФАБРИКИ ЭЛЕМЕНТОВ ════════════════════════════════════════════
+local function secL(pg,txt,ord)
     local w=Instance.new("Frame",pg)
     w.Size=UDim2.new(1,0,0,24);w.BackgroundTransparency=1
     w.BorderSizePixel=0;w.ZIndex=13;w.LayoutOrder=ord or #pg:GetChildren()
-    local l=mkLbl(w,txt:upper(),9,Enum.Font.GothamBold,themeColor,Enum.TextXAlignment.Left)
+    local l=mLbl(w,txt:upper(),9,Enum.Font.GothamBold,TC,Enum.TextXAlignment.Left)
     l.Size=UDim2.new(1,-12,1,0);l.Position=UDim2.new(0,12,0,0);l.ZIndex=14
-    regTheme(l,"TextColor3")
+    regTC(l,"TextColor3")
     local dv=Instance.new("Frame",w);dv.Size=UDim2.new(1,-12,0,1);dv.Position=UDim2.new(0,6,1,-1)
     dv.BackgroundColor3=BDR;dv.BorderSizePixel=0;dv.ZIndex=14
 end
 
--- Универсальный toggle с 📌
 local function mkTgl(pg,label,desc,def,cb,ord)
     local row=Instance.new("Frame",pg)
     row.Size=UDim2.new(1,0,0,52);row.BackgroundColor3=BG2
@@ -973,23 +955,18 @@ local function mkTgl(pg,label,desc,def,cb,ord)
     local bar=Instance.new("Frame",row)
     bar.Size=UDim2.new(0,2,0.6,0);bar.Position=UDim2.new(0,0,0.2,0)
     bar.BackgroundColor3=BDR;bar.BorderSizePixel=0;bar.ZIndex=14;cr(2,bar)
-    local tl=mkLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    local tl=mLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
     tl.Size=UDim2.new(1,-92,0,20);tl.Position=UDim2.new(0,12,0,7);tl.ZIndex=14
-    local sl=mkLbl(row,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+    local sl=mLbl(row,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
     sl.Size=UDim2.new(1,-92,0,14);sl.Position=UDim2.new(0,12,0,27);sl.ZIndex=14
-    -- 📌 кнопка
-    local pinBtn=Instance.new("TextButton",row)
-    pinBtn.Size=UDim2.new(0,22,0,22);pinBtn.Position=UDim2.new(1,-86,0.5,-11)
-    pinBtn.BackgroundColor3=BG3;pinBtn.BorderSizePixel=0
-    pinBtn.Text="📌";pinBtn.TextSize=11;pinBtn.AutoButtonColor=false;pinBtn.ZIndex=15;cr(5,pinBtn)
-    -- Захватываем state для pin
+    local pinB=Instance.new("TextButton",row)
+    pinB.Size=UDim2.new(0,22,0,22);pinB.Position=UDim2.new(1,-86,0.5,-11)
+    pinB.BackgroundColor3=BG3;pinB.BorderSizePixel=0
+    pinB.Text="📌";pinB.TextSize=11;pinB.AutoButtonColor=false;pinB.ZIndex=15;cr(5,pinB)
     local s2=def or false
-    pinBtn.MouseButton1Click:Connect(function()
-        createPinWidget(label,function(v) s2=v;cb(v) end)
-    end)
-    pinBtn.MouseEnter:Connect(function() tw(pinBtn,.1,{BackgroundColor3=BG2}) end)
-    pinBtn.MouseLeave:Connect(function() tw(pinBtn,.1,{BackgroundColor3=BG3}) end)
-    -- Пилюля
+    pinB.MouseButton1Click:Connect(function() pinWidget(label,function(v) s2=v;cb(v) end) end)
+    pinB.MouseEnter:Connect(function() tw(pinB,.1,{BackgroundColor3=BG2}) end)
+    pinB.MouseLeave:Connect(function() tw(pinB,.1,{BackgroundColor3=BG3}) end)
     local pill=Instance.new("Frame",row)
     pill.Size=UDim2.new(0,36,0,18);pill.Position=UDim2.new(1,-46,0.5,-9)
     pill.BackgroundColor3=BDR;pill.BorderSizePixel=0;pill.ZIndex=14;cr(9,pill)
@@ -997,10 +974,10 @@ local function mkTgl(pg,label,desc,def,cb,ord)
     knob.Size=UDim2.new(0,12,0,12);knob.Position=UDim2.new(0,3,0.5,-6)
     knob.BackgroundColor3=TXTD;knob.BorderSizePixel=0;knob.ZIndex=15;cr(6,knob)
     local function rp()
-        tw(pill,.18,{BackgroundColor3=s2 and themeColor or BDR})
+        tw(pill,.18,{BackgroundColor3=s2 and TC or BDR})
         tw(knob,.18,{Position=s2 and UDim2.new(0,21,0.5,-6) or UDim2.new(0,3,0.5,-6),
             BackgroundColor3=s2 and WHT or TXTD})
-        tw(bar,.15,{BackgroundColor3=s2 and themeColor or BDR})
+        tw(bar,.15,{BackgroundColor3=s2 and TC or BDR})
     end
     rp()
     local b=Instance.new("TextButton",row)
@@ -1012,33 +989,30 @@ local function mkTgl(pg,label,desc,def,cb,ord)
     dv.BackgroundColor3=BDR;dv.BorderSizePixel=0;dv.ZIndex=13
 end
 
--- Toggle с ⚙ и 📌
-local function mkTglGear(pg,label,desc,ord,onTog,onGear)
+local function mkTglGear(pg,label,desc,ord,onT,onG)
     local row=Instance.new("Frame",pg)
     row.Size=UDim2.new(1,0,0,52);row.BackgroundColor3=BG2
     row.BorderSizePixel=0;row.ZIndex=13;row.LayoutOrder=ord or #pg:GetChildren()
     local bar=Instance.new("Frame",row)
     bar.Size=UDim2.new(0,2,0.6,0);bar.Position=UDim2.new(0,0,0.2,0)
     bar.BackgroundColor3=BDR;bar.BorderSizePixel=0;bar.ZIndex=14;cr(2,bar)
-    local tl=mkLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    local tl=mLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
     tl.Size=UDim2.new(1,-118,0,20);tl.Position=UDim2.new(0,12,0,7);tl.ZIndex=14
-    local sl=mkLbl(row,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+    local sl=mLbl(row,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
     sl.Size=UDim2.new(1,-118,0,14);sl.Position=UDim2.new(0,12,0,27);sl.ZIndex=14
     local s2=false
-    local pinBtn=Instance.new("TextButton",row)
-    pinBtn.Size=UDim2.new(0,22,0,22);pinBtn.Position=UDim2.new(1,-114,0.5,-11)
-    pinBtn.BackgroundColor3=BG3;pinBtn.BorderSizePixel=0
-    pinBtn.Text="📌";pinBtn.TextSize=11;pinBtn.AutoButtonColor=false;pinBtn.ZIndex=15;cr(5,pinBtn)
-    pinBtn.MouseButton1Click:Connect(function() createPinWidget(label,function(v) s2=v;onTog(v) end) end)
-    pinBtn.MouseEnter:Connect(function() tw(pinBtn,.1,{BackgroundColor3=BG2}) end)
-    pinBtn.MouseLeave:Connect(function() tw(pinBtn,.1,{BackgroundColor3=BG3}) end)
+    local pinB=Instance.new("TextButton",row)
+    pinB.Size=UDim2.new(0,22,0,22);pinB.Position=UDim2.new(1,-114,0.5,-11)
+    pinB.BackgroundColor3=BG3;pinB.BorderSizePixel=0
+    pinB.Text="📌";pinB.TextSize=11;pinB.AutoButtonColor=false;pinB.ZIndex=15;cr(5,pinB)
+    pinB.MouseButton1Click:Connect(function() pinWidget(label,function(v) s2=v;onT(v) end) end)
     local gear=Instance.new("TextButton",row)
     gear.Size=UDim2.new(0,30,0,22);gear.Position=UDim2.new(1,-76,0.5,-11)
     gear.BackgroundColor3=BG3;gear.BorderSizePixel=0
     gear.Text="⚙";gear.TextColor3=TXTD;gear.TextSize=13;gear.Font=Enum.Font.Gotham
     gear.AutoButtonColor=false;gear.ZIndex=15;cr(6,gear)
-    gear.MouseButton1Click:Connect(onGear)
-    gear.MouseEnter:Connect(function() tw(gear,.1,{BackgroundColor3=BG2,TextColor3=themeColor}) end)
+    gear.MouseButton1Click:Connect(onG)
+    gear.MouseEnter:Connect(function() tw(gear,.1,{BackgroundColor3=BG2,TextColor3=TC}) end)
     gear.MouseLeave:Connect(function() tw(gear,.1,{BackgroundColor3=BG3,TextColor3=TXTD}) end)
     local pill=Instance.new("Frame",row)
     pill.Size=UDim2.new(0,36,0,18);pill.Position=UDim2.new(1,-42,0.5,-9)
@@ -1047,38 +1021,37 @@ local function mkTglGear(pg,label,desc,ord,onTog,onGear)
     knob.Size=UDim2.new(0,12,0,12);knob.Position=UDim2.new(0,3,0.5,-6)
     knob.BackgroundColor3=TXTD;knob.BorderSizePixel=0;knob.ZIndex=15;cr(6,knob)
     local function rp()
-        tw(pill,.18,{BackgroundColor3=s2 and themeColor or BDR})
+        tw(pill,.18,{BackgroundColor3=s2 and TC or BDR})
         tw(knob,.18,{Position=s2 and UDim2.new(0,21,0.5,-6) or UDim2.new(0,3,0.5,-6),
             BackgroundColor3=s2 and WHT or TXTD})
-        tw(bar,.15,{BackgroundColor3=s2 and themeColor or BDR})
+        tw(bar,.15,{BackgroundColor3=s2 and TC or BDR})
     end
     rp()
-    local holdT=nil;local isHold=false
+    local holdT=nil;local isH=false
     local b=Instance.new("TextButton",row)
     b.Size=UDim2.new(1,-118,1,0);b.BackgroundTransparency=1;b.Text="";b.ZIndex=15
     b.MouseButton1Click:Connect(function()
-        if isHold then isHold=false;return end;s2=not s2;rp();onTog(s2) end)
+        if isH then isH=false;return end;s2=not s2;rp();onT(s2) end)
     b.MouseButton1Down:Connect(function()
-        isHold=false;holdT=task.delay(.5,function() isHold=true;onGear() end) end)
+        isH=false;holdT=task.delay(.5,function() isH=true;onG() end) end)
     b.MouseButton1Up:Connect(function() if holdT then task.cancel(holdT);holdT=nil end end)
-    b.TouchLongPress:Connect(function() isHold=true;onGear() end)
+    b.TouchLongPress:Connect(function() isH=true;onG() end)
     row.MouseEnter:Connect(function() tw(row,.1,{BackgroundColor3=BG3}) end)
     row.MouseLeave:Connect(function() tw(row,.1,{BackgroundColor3=BG2}) end)
     local dv=Instance.new("Frame",row);dv.Size=UDim2.new(1,0,0,1);dv.Position=UDim2.new(0,0,1,-1)
     dv.BackgroundColor3=BDR;dv.BorderSizePixel=0;dv.ZIndex=13
 end
 
--- Toggle с цветной точкой
-local function mkTglCol(pg,label,desc,acol,def,cb,ord)
+local function mkTglC(pg,label,desc,acol,def,cb,ord)
     local row=Instance.new("Frame",pg)
     row.Size=UDim2.new(1,0,0,44);row.BackgroundColor3=BG2
     row.BorderSizePixel=0;row.ZIndex=13;row.LayoutOrder=ord or #pg:GetChildren()
     local dot=Instance.new("Frame",row)
     dot.Size=UDim2.new(0,8,0,8);dot.Position=UDim2.new(0,10,0.5,-4)
     dot.BackgroundColor3=acol;dot.BorderSizePixel=0;dot.ZIndex=14;cr(4,dot)
-    local tl=mkLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    local tl=mLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
     tl.Size=UDim2.new(1,-60,0,18);tl.Position=UDim2.new(0,24,0,5);tl.ZIndex=14
-    local sl=mkLbl(row,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+    local sl=mLbl(row,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
     sl.Size=UDim2.new(1,-60,0,12);sl.Position=UDim2.new(0,24,0,23);sl.ZIndex=14
     local pill=Instance.new("Frame",row)
     pill.Size=UDim2.new(0,36,0,18);pill.Position=UDim2.new(1,-46,0.5,-9)
@@ -1102,22 +1075,19 @@ local function mkTglCol(pg,label,desc,acol,def,cb,ord)
     dv.BackgroundColor3=BDR;dv.BorderSizePixel=0;dv.ZIndex=13
 end
 
--- Слайдер
-local function mkSlider(pg,label,mn,mx,cur,fmt,cb,ord)
+local function mkSl(pg,label,mn,mx,cur,fmt,cb,ord)
     fmt=fmt or "%d"
     local row=Instance.new("Frame",pg)
     row.Size=UDim2.new(1,0,0,50);row.BackgroundColor3=BG3
     row.BorderSizePixel=0;row.ZIndex=13;row.LayoutOrder=ord or #pg:GetChildren();cr(6,row)
-    local tl=mkLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    local tl=mLbl(row,label,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
     tl.Size=UDim2.new(1,-54,0,18);tl.Position=UDim2.new(0,10,0,5);tl.ZIndex=14
-    local vl=mkLbl(row,string.format(fmt,cur),11,Enum.Font.GothamBold,themeColor,Enum.TextXAlignment.Right)
-    vl.Size=UDim2.new(0,44,0,18);vl.Position=UDim2.new(1,-52,0,5);vl.ZIndex=14
-    regTheme(vl,"TextColor3")
+    local vl=mLbl(row,string.format(fmt,cur),11,Enum.Font.GothamBold,TC,Enum.TextXAlignment.Right)
+    vl.Size=UDim2.new(0,44,0,18);vl.Position=UDim2.new(1,-52,0,5);vl.ZIndex=14;regTC(vl,"TextColor3")
     local trk=Instance.new("Frame",row);trk.Size=UDim2.new(1,-20,0,4);trk.Position=UDim2.new(0,10,0,33)
     trk.BackgroundColor3=BDR;trk.BorderSizePixel=0;trk.ZIndex=14;cr(2,trk)
     local fill=Instance.new("Frame",trk);fill.Size=UDim2.new((cur-mn)/(mx-mn),0,1,0)
-    fill.BackgroundColor3=themeColor;fill.BorderSizePixel=0;fill.ZIndex=15;cr(2,fill)
-    regTheme(fill,"BackgroundColor3")
+    fill.BackgroundColor3=TC;fill.BorderSizePixel=0;fill.ZIndex=15;cr(2,fill);regTC(fill,"BackgroundColor3")
     local knob=Instance.new("Frame",trk);knob.Size=UDim2.new(0,14,0,14)
     knob.AnchorPoint=Vector2.new(.5,.5);knob.Position=UDim2.new((cur-mn)/(mx-mn),0,.5,0)
     knob.BackgroundColor3=WHT;knob.BorderSizePixel=0;knob.ZIndex=16;cr(7,knob)
@@ -1142,30 +1112,26 @@ local function mkSlider(pg,label,mn,mx,cur,fmt,cb,ord)
         or i.UserInputType==Enum.UserInputType.Touch then drag=false end end)
 end
 
--- Суб-панель
 local function mkSub(title)
-    local p=Instance.new("Frame",Content)
+    local p=Instance.new("Frame",Ct)
     p.Size=UDim2.new(1,0,1,0);p.BackgroundColor3=BG;p.BorderSizePixel=0
     p.ZIndex=30;p.Visible=false;cr(8,p)
-    local hd=Instance.new("Frame",p)
-    hd.Size=UDim2.new(1,0,0,32);hd.BackgroundColor3=BG2;hd.BorderSizePixel=0;hd.ZIndex=31;cr(8,hd)
-    local fix=Instance.new("Frame",hd)
-    fix.Size=UDim2.new(1,0,0,16);fix.Position=UDim2.new(0,0,1,-16)
+    local hd=Instance.new("Frame",p);hd.Size=UDim2.new(1,0,0,32);hd.BackgroundColor3=BG2
+    hd.BorderSizePixel=0;hd.ZIndex=31;cr(8,hd)
+    local fix=Instance.new("Frame",hd);fix.Size=UDim2.new(1,0,0,16);fix.Position=UDim2.new(0,0,1,-16)
     fix.BackgroundColor3=BG2;fix.BorderSizePixel=0;fix.ZIndex=31
     local back=Instance.new("TextButton",hd)
     back.Size=UDim2.new(0,32,1,0);back.BackgroundTransparency=1
-    back.Text="←";back.TextColor3=themeColor;back.TextSize=16
-    back.Font=Enum.Font.GothamBold;back.ZIndex=32;regTheme(back,"TextColor3")
-    local ttl=mkLbl(hd,title,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    back.Text="←";back.TextColor3=TC;back.TextSize=16;back.Font=Enum.Font.GothamBold;back.ZIndex=32
+    regTC(back,"TextColor3")
+    local ttl=mLbl(hd,title,11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
     ttl.Size=UDim2.new(1,-42,1,0);ttl.Position=UDim2.new(0,36,0,0);ttl.ZIndex=32
-    local dv=Instance.new("Frame",p)
-    dv.Size=UDim2.new(1,0,0,1);dv.Position=UDim2.new(0,0,0,32)
+    local dv=Instance.new("Frame",p);dv.Size=UDim2.new(1,0,0,1);dv.Position=UDim2.new(0,0,0,32)
     dv.BackgroundColor3=BDR;dv.BorderSizePixel=0;dv.ZIndex=31
     local sc=Instance.new("ScrollingFrame",p)
     sc.Size=UDim2.new(1,0,1,-34);sc.Position=UDim2.new(0,0,0,33)
-    sc.BackgroundTransparency=1;sc.BorderSizePixel=0;sc.ScrollBarThickness=2
-    sc.ScrollBarImageColor3=BDR;sc.CanvasSize=UDim2.new(0,0,0,0)
-    sc.AutomaticCanvasSize=Enum.AutomaticSize.Y;sc.ZIndex=31
+    sc.BackgroundTransparency=1;sc.BorderSizePixel=0;sc.ScrollBarThickness=2;sc.ScrollBarImageColor3=BDR
+    sc.CanvasSize=UDim2.new(0,0,0,0);sc.AutomaticCanvasSize=Enum.AutomaticSize.Y;sc.ZIndex=31
     local lay=Instance.new("UIListLayout",sc);lay.Padding=UDim.new(0,5)
     local pd=Instance.new("UIPadding",sc)
     pd.PaddingTop=UDim.new(0,8);pd.PaddingBottom=UDim.new(0,8)
@@ -1178,7 +1144,9 @@ local function mkSub(title)
     local function close2()
         TweenSvc:Create(p,TweenInfo.new(.2,Enum.EasingStyle.Quint,Enum.EasingDirection.In),
             {Position=UDim2.new(1,0,0,0),Size=UDim2.new(0,0,1,0)}):Play()
-        task.delay(.22,function() p.Visible=false;p.Position=UDim2.new(0,0,0,0);p.Size=UDim2.new(1,0,1,0) end)
+        task.delay(.22,function()
+            p.Visible=false;p.Position=UDim2.new(0,0,0,0);p.Size=UDim2.new(1,0,1,0)
+        end)
     end
     back.MouseButton1Click:Connect(close2)
     return sc,open2,close2
@@ -1186,746 +1154,446 @@ end
 
 -- ══ НАПОЛНЕНИЕ ВКЛАДОК ════════════════════════════════════════════
 
--- ── MOV (только движение/полёт) ───────────────────────────────────
-local MOV=tabPages.MOV
-secLbl(MOV,"flight speed",1)
-mkSlider(MOV,"Скорость полёта",4,60,18,"%d st/s",function(v) flySpeed=v end,2)
-secLbl(MOV,"movement",3)
+-- MOV
+local MOV=tPgs.MOV
+secL(MOV,"flight speed",1)
+mkSl(MOV,"Скорость полёта",4,60,18,"%d st/s",function(v) flySpeed=v end,2)
+secL(MOV,"movement",3)
 mkTgl(MOV,"Magic Flight","автополёт по камере  •  [F]",false,function(v)
-    if v then startFlight();notify("Magic Flight","Активирован  ✈",themeColor)
-    else stopFlight();notify("Magic Flight","Отключён",TXTD) end
+    if v then startFlight();notify("Magic Flight","ON  ✈",TC)
+    else stopFlight();notify("Magic Flight","OFF",TXTD) end
 end,4)
-mkTgl(MOV,"Magic Resolver","авто-уклон от NPC / игроков",false,function(v)
-    resolverOn=v
-    if not v then resActive=false;resVel=0 end
-    notify("Resolver",v and "Активирован" or "Отключён",v and Color3.fromRGB(255,195,65) or TXTD)
+mkTgl(MOV,"Magic Resolver","авто-уклон от NPC",false,function(v)
+    resolverOn=v;notify("Resolver",v and "ON" or "OFF",v and Color3.fromRGB(255,195,65) or TXTD)
 end,5)
 mkTgl(MOV,"Damage Fly","получи урон → летишь",false,function(v)
-    setDF(v);notify("Damage Fly",v and "Активирован  💥" or "Отключён",v and Color3.fromRGB(255,140,50) or TXTD)
+    setDF(v);notify("Damage Fly",v and "ON 💥" or "OFF",v and Color3.fromRGB(255,140,50) or TXTD)
 end,6)
-mkTgl(MOV,"Infinite Jump","бесконечные прыжки  •  [H]",false,function(v)
-    if v then startInfJump();notify("Infinite Jump","Активирован  ↑↑",themeColor)
-    else stopInfJump();notify("Infinite Jump","Отключён",TXTD) end
+mkTgl(MOV,"Infinite Jump","∞ прыжки  •  [H]",false,function(v)
+    if v then startIJ();notify("Inf Jump","ON ↑↑",TC)
+    else stopIJ();notify("Inf Jump","OFF",TXTD) end
 end,7)
+secL(MOV,"extras",8)
+-- Speed Walk inline slider+toggle
+do
+    local swRow=Instance.new("Frame",MOV)
+    swRow.Size=UDim2.new(1,0,0,76);swRow.BackgroundColor3=BG2
+    swRow.BorderSizePixel=0;swRow.ZIndex=13;swRow.LayoutOrder=9
+    local swBar2=Instance.new("Frame",swRow)
+    swBar2.Size=UDim2.new(0,2,0.6,0);swBar2.Position=UDim2.new(0,0,0.15,0)
+    swBar2.BackgroundColor3=BDR;swBar2.BorderSizePixel=0;swBar2.ZIndex=14;cr(2,swBar2)
+    local swL=mLbl(swRow,"Speed Walk",11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    swL.Size=UDim2.new(1,-62,0,18);swL.Position=UDim2.new(0,12,0,6);swL.ZIndex=14
+    local swD=mLbl(swRow,"скорость хождения",9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+    swD.Size=UDim2.new(1,-62,0,12);swD.Position=UDim2.new(0,12,0,24);swD.ZIndex=14
+    local swTk=Instance.new("Frame",swRow);swTk.Size=UDim2.new(1,-24,0,4);swTk.Position=UDim2.new(0,12,0,44)
+    swTk.BackgroundColor3=BDR;swTk.BorderSizePixel=0;swTk.ZIndex=14;cr(2,swTk)
+    local swFl=Instance.new("Frame",swTk);swFl.Size=UDim2.new(0.25,0,1,0)
+    swFl.BackgroundColor3=TC;swFl.BorderSizePixel=0;swFl.ZIndex=15;cr(2,swFl);regTC(swFl,"BackgroundColor3")
+    local swKn=Instance.new("Frame",swTk);swKn.Size=UDim2.new(0,14,0,14)
+    swKn.AnchorPoint=Vector2.new(.5,.5);swKn.Position=UDim2.new(0.25,0,.5,0)
+    swKn.BackgroundColor3=WHT;swKn.BorderSizePixel=0;swKn.ZIndex=16;cr(7,swKn)
+    local swVl=mLbl(swRow,tostring(swVal),10,Enum.Font.GothamBold,TC,Enum.TextXAlignment.Right)
+    swVl.Size=UDim2.new(0,40,0,14);swVl.Position=UDim2.new(1,-50,0,8);swVl.ZIndex=14;regTC(swVl,"TextColor3")
+    local swPl=Instance.new("Frame",swRow)
+    swPl.Size=UDim2.new(0,36,0,18);swPl.Position=UDim2.new(1,-46,0,6)
+    swPl.BackgroundColor3=BDR;swPl.BorderSizePixel=0;swPl.ZIndex=14;cr(9,swPl)
+    local swKn2=Instance.new("Frame",swPl)
+    swKn2.Size=UDim2.new(0,12,0,12);swKn2.Position=UDim2.new(0,3,0.5,-6)
+    swKn2.BackgroundColor3=TXTD;swKn2.BorderSizePixel=0;swKn2.ZIndex=15;cr(6,swKn2)
+    local swSt=false
+    local swDrag=false
+    local function swUpd(ax)
+        local ta=swTk.AbsolutePosition.X;local tw3=swTk.AbsoluteSize.X
+        local r=math.clamp((ax-ta)/tw3,0,1)
+        swVal=16+math.floor(84*r+.5)
+        swFl.Size=UDim2.new(r,0,1,0);swKn.Position=UDim2.new(r,0,.5,0)
+        swVl.Text=tostring(swVal)
+    end
+    local function swRp()
+        tw(swPl,.18,{BackgroundColor3=swSt and TC or BDR})
+        tw(swKn2,.18,{Position=swSt and UDim2.new(0,21,0.5,-6) or UDim2.new(0,3,0.5,-6),
+            BackgroundColor3=swSt and WHT or TXTD})
+        tw(swBar2,.15,{BackgroundColor3=swSt and TC or BDR})
+    end
+    swKn.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then swDrag=true end end)
+    swTk.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then swDrag=true;swUpd(i.Position.X) end end)
+    UIS.InputChanged:Connect(function(i) if swDrag and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then swUpd(i.Position.X) end end)
+    UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then swDrag=false end end)
+    local swBtn=Instance.new("TextButton",swRow)
+    swBtn.Size=UDim2.new(1,0,0,38);swBtn.BackgroundTransparency=1;swBtn.Text="";swBtn.ZIndex=15
+    swBtn.MouseButton1Click:Connect(function()
+        swSt=not swSt;swRp()
+        if swSt then startSW();notify("Speed Walk","ON 🏃",TC)
+        else stopSW();notify("Speed Walk","OFF",TXTD) end
+    end)
+    local swDv=Instance.new("Frame",swRow);swDv.Size=UDim2.new(1,0,0,1);swDv.Position=UDim2.new(0,0,1,-1)
+    swDv.BackgroundColor3=BDR;swDv.BorderSizePixel=0;swDv.ZIndex=13
+end
+mkTgl(MOV,"High Jump","мощный прыжок",false,function(v)
+    if v then startHJ();notify("High Jump","ON 🚀",TC)
+    else stopHJ();notify("High Jump","OFF",TXTD) end
+end,10)
+mkSl(MOV,"High Jump сила",20,200,80,"%d",function(v) hjPow=v end,11)
 
 -- Speed суб-панель
-local SpSC,openSp=mkSub("SPEED  /  настройки")
-secLbl(SpSC,"режим",1)
-local spModes={{k="collision",l="Collision",d="буст при столкновении"},
+local SpSC,openSp=mkSub("SPEED")
+secL(SpSC,"режим",1)
+local spM={{k="collision",l="Collision",d="буст при столкновении"},
     {k="minijump",l="MiniJump",d="вертикальные импульсы"},
     {k="selfpush",l="Self Push",d="толчок вперёд"}}
-local spRad={}
-for _,m in ipairs(spModes) do
+local spRd={}
+for _,m in ipairs(spM) do
     local r=Instance.new("TextButton",SpSC);r.Size=UDim2.new(1,0,0,38);r.BackgroundColor3=BG3
     r.BorderSizePixel=0;r.Text="";r.AutoButtonColor=false;r.ZIndex=32;r.LayoutOrder=#SpSC:GetChildren();cr(6,r)
     local cir=Instance.new("Frame",r);cir.Size=UDim2.new(0,14,0,14);cir.Position=UDim2.new(0,10,0.5,-7)
     cir.BackgroundColor3=BDR;cir.BorderSizePixel=0;cir.ZIndex=33;cr(7,cir)
     local dot=Instance.new("Frame",cir);dot.Size=UDim2.new(0,6,0,6);dot.AnchorPoint=Vector2.new(.5,.5)
-    dot.Position=UDim2.new(.5,0,.5,0);dot.BackgroundColor3=themeColor;dot.BorderSizePixel=0;dot.ZIndex=34;cr(3,dot)
-    dot.Visible=(m.k==speedMode)
-    regTheme(dot,"BackgroundColor3")
-    local tl=mkLbl(r,m.l,11,Enum.Font.Gotham,TXT,Enum.TextXAlignment.Left)
+    dot.Position=UDim2.new(.5,0,.5,0);dot.BackgroundColor3=TC;dot.BorderSizePixel=0;dot.ZIndex=34;cr(3,dot)
+    dot.Visible=(m.k==speedMode);regTC(dot,"BackgroundColor3")
+    local tl=mLbl(r,m.l,11,Enum.Font.Gotham,TXT,Enum.TextXAlignment.Left)
     tl.Size=UDim2.new(1,-32,0,18);tl.Position=UDim2.new(0,30,0,5);tl.ZIndex=33
-    local dl=mkLbl(r,m.d,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+    local dl=mLbl(r,m.d,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
     dl.Size=UDim2.new(1,-32,0,12);dl.Position=UDim2.new(0,30,0,22);dl.ZIndex=33
-    spRad[m.k]={dot=dot}
+    spRd[m.k]={dot=dot}
     r.MouseButton1Click:Connect(function()
-        for k,rd in pairs(spRad) do rd.dot.Visible=(k==m.k) end
-        speedMode=m.k;notify("Speed","Режим: "..m.l,themeColor) end)
+        for k,rd in pairs(spRd) do rd.dot.Visible=(k==m.k) end
+        speedMode=m.k;notify("Speed",m.l,TC) end)
     r.MouseEnter:Connect(function() tw(r,.08,{BackgroundColor3=BG2}) end)
     r.MouseLeave:Connect(function() tw(r,.08,{BackgroundColor3=BG3}) end)
 end
-secLbl(SpSC,"collision",#SpSC:GetChildren()+1)
-mkSlider(SpSC,"Радиус",3,20,8,"%d st",function(v) spCfg.collision.radius=v end)
-mkSlider(SpSC,"Скорость буста",10,80,32,"%d",function(v) spCfg.collision.speed=v end)
-secLbl(SpSC,"minijump",#SpSC:GetChildren()+1)
-mkSlider(SpSC,"Сила импульса",10,60,18,"%d",function(v) spCfg.minijump.power=v end)
-mkSlider(SpSC,"Интервал",5,60,18,"%.2fs",function(v) spCfg.minijump.rate=v/100 end)
-secLbl(SpSC,"self push",#SpSC:GetChildren()+1)
-mkSlider(SpSC,"Сила толчка",10,150,55,"%d",function(v) spCfg.selfpush.speed=v end)
-local function spBtn(col,txt,cb2)
+secL(SpSC,"collision",#SpSC:GetChildren()+1)
+mkSl(SpSC,"Радиус",3,20,8,"%d st",function(v) spCfg.collision.r=v end)
+mkSl(SpSC,"Скорость",10,80,32,"%d",function(v) spCfg.collision.s=v end)
+secL(SpSC,"minijump",#SpSC:GetChildren()+1)
+mkSl(SpSC,"Сила",10,60,18,"%d",function(v) spCfg.minijump.p=v end)
+mkSl(SpSC,"Интервал",5,60,18,"%.2fs",function(v) spCfg.minijump.rate=v/100 end)
+secL(SpSC,"self push",#SpSC:GetChildren()+1)
+mkSl(SpSC,"Сила толчка",10,150,55,"%d",function(v) spCfg.selfpush.s=v end)
+local function spBtn2(col,txt,cb2)
     local b=Instance.new("TextButton",SpSC);b.Size=UDim2.new(1,0,0,34);b.BackgroundColor3=col
     b.BorderSizePixel=0;b.Text=txt;b.TextColor3=WHT;b.TextSize=12;b.Font=Enum.Font.GothamBold
     b.AutoButtonColor=false;b.ZIndex=32;b.LayoutOrder=#SpSC:GetChildren();cr(6,b)
     b.MouseButton1Click:Connect(cb2)
 end
-spBtn(themeColor,"  ЗАПУСТИТЬ",function() runSpeed(speedMode) end)
-spBtn(BG3,"  СТОП",function() stopSpeed();notify("Speed","Остановлен",TXTD) end)
-mkTglGear(MOV,"Speed","удержи/⚙ настройки",8,function(v) if not v then stopSpeed() end end,openSp)
+spBtn2(TC,"  ЗАПУСТИТЬ",function() runSpeed(speedMode) end)
+spBtn2(BG3,"  СТОП",function() stopSpeed();notify("Speed","OFF",TXTD) end)
+mkTglGear(MOV,"Speed","удержи/⚙ настройки",12,function(v) if not v then stopSpeed() end end,openSp)
 
--- ── COM (боевые + утилиты) ─────────────────────────────────────────
-local COM=tabPages.COM
-secLbl(COM,"combat",1)
-local DgSC,openDg=mkSub("DODGE  /  настройки")
-secLbl(DgSC,"параметры",1)
-mkSlider(DgSC,"Радиус",3,30,18,"%d st",function(v) dCfg.Radius=v end)
-mkSlider(DgSC,"Предсказание",5,80,28,"%.2fs",function(v) dCfg.PredictTime=v/100 end)
-mkSlider(DgSC,"Базовая сила",5,60,18,"%d",function(v) dCfg.BaseForce=v end)
-mkSlider(DgSC,"Множитель скорости",5,100,45,"%d%%",function(v) dCfg.SpeedMult=v/100 end)
-mkSlider(DgSC,"Кулдаун",10,100,35,"%.2fs",function(v) dCfg.Cooldown=v/100 end)
-mkTglGear(COM,"SmartDodge","уворот от летящего врага",2,function(v)
-    dodgeOn=v;notify("SmartDodge",v and "Активирован  ⚔" or "Отключён",
-        v and Color3.fromRGB(255,100,100) or TXTD)
+-- COM
+local COM=tPgs.COM
+secL(COM,"combat",1)
+local DgSC,openDg=mkSub("DODGE")
+secL(DgSC,"параметры",1)
+mkSl(DgSC,"Радиус",3,30,18,"%d st",function(v) dCfg.R=v end)
+mkSl(DgSC,"Предсказание",5,80,28,"%.2fs",function(v) dCfg.PT=v/100 end)
+mkSl(DgSC,"Базовая сила",5,60,18,"%d",function(v) dCfg.BF=v end)
+mkSl(DgSC,"Множитель",5,100,45,"%d%%",function(v) dCfg.SM=v/100 end)
+mkSl(DgSC,"Кулдаун",10,100,35,"%.2fs",function(v) dCfg.CD=v/100 end)
+mkTglGear(COM,"SmartDodge","уворот от врага",2,function(v)
+    dodgeOn=v;notify("SmartDodge",v and "ON ⚔" or "OFF",v and Color3.fromRGB(255,100,100) or TXTD)
 end,openDg)
-
-secLbl(COM,"utilities",3)
-mkTgl(COM,"Float","замораживает позу → летит",false,function(v)
-    if v then startFloat();notify("Float","Активирован  🧊",themeColor)
-    else stopFloat();notify("Float","Отключён",TXTD) end
+secL(COM,"utilities",3)
+mkTgl(COM,"Float","замороженная поза → полёт",false,function(v)
+    if v then startFloat();notify("Float","ON 🧊",TC)
+    else stopFloat();notify("Float","OFF",TXTD) end
 end,4)
 mkTgl(COM,"Noclip","сквозь стены  •  [G]",false,function(v)
-    if v then startNoclip();notify("Noclip","Активирован  👻",themeColor)
-    else stopNoclip();notify("Noclip","Отключён",TXTD) end
+    if v then startNC();notify("Noclip","ON 👻",TC)
+    else stopNC();notify("Noclip","OFF",TXTD) end
 end,5)
 mkTgl(COM,"Long Jump","прыжок в 3× сильнее",false,function(v)
-    if v then startLongJump();notify("Long Jump","Активирован  🦘",themeColor)
-    else stopLongJump();notify("Long Jump","Отключён",TXTD) end
+    if v then startLJ();notify("Long Jump","ON 🦘",TC)
+    else stopLJ();notify("Long Jump","OFF",TXTD) end
 end,6)
-
-secLbl(COM,"protection",7)
+secL(COM,"protection",7)
 mkTgl(COM,"Anti-Ragdoll","не падать при ударе",false,function(v)
-    if v then startAntiRagdoll();notify("Anti-Ragdoll","Активирован  🛡",themeColor)
-    else stopAntiRagdoll();notify("Anti-Ragdoll","Отключён",TXTD) end
+    if v then startAR();notify("Anti-Ragdoll","ON 🛡",TC)
+    else stopAR();notify("Anti-Ragdoll","OFF",TXTD) end
 end,8)
 mkTgl(COM,"Anti-Reset","защита от ресета",false,function(v)
-    if v then startAntiReset();notify("Anti-Reset","Активирован  🔒",themeColor)
-    else stopAntiReset();notify("Anti-Reset","Отключён",TXTD) end
+    if v then startAntiRst();notify("Anti-Reset","ON 🔒",TC)
+    else stopAntiRst();notify("Anti-Reset","OFF",TXTD) end
 end,9)
-
--- Auto Platform суб-панель
-local ApSC,openAp=mkSub("AUTO PLATFORM  /  настройки")
-mkSlider(ApSC,"Скорость подъёма",1,30,12,"%.0f st/s",function(v) apSpeed=v end)
-local apNote=Instance.new("TextLabel",ApSC)
-apNote.Size=UDim2.new(1,0,0,36);apNote.BackgroundColor3=BG3;apNote.BorderSizePixel=0
-apNote.ZIndex=32;apNote.LayoutOrder=99;apNote.BackgroundTransparency=0;cr(6,apNote)
-apNote.Text="5×5 платформа появляется сразу под ногами и поднимается вверх"
-apNote.TextWrapped=true;apNote.TextColor3=TXTD;apNote.TextSize=9;apNote.Font=Enum.Font.Gotham
+local ApSC,openAp=mkSub("AUTO PLATFORM")
+mkSl(ApSC,"Скорость подъёма",1,30,12,"%.0f st/s",function(v) apSpd=v end)
 mkTglGear(COM,"Auto Platform","платформа под ногами",10,function(v)
-    if v then startAutoPlatform();notify("Auto Platform","Активирован  ⬆",themeColor)
-    else stopAutoPlatform();notify("Auto Platform","Отключён",TXTD) end
+    if v then startAP();notify("Auto Platform","ON ⬆",TC)
+    else stopAP();notify("Auto Platform","OFF",TXTD) end
 end,openAp)
+secL(COM,"misc",11)
+mkTgl(COM,"Spin","крутит персонажа",false,function(v)
+    if v then startSpin();notify("Spin","ON 🌀",TC)
+    else stopSpin();notify("Spin","OFF",TXTD) end
+end,12)
+mkSl(COM,"Скорость вращения",1,20,8,"%d rps",function(v)
+    spinSpd=v;if spinBAV and spinBAV.Parent then spinBAV.AngularVelocity=Vector3.new(0,v*math.pi*2,0) end
+end,13)
+mkTgl(COM,"Fake Lag","имитация лага",false,function(v)
+    if v then startFL();notify("Fake Lag","ON 📡",TC)
+    else stopFL();notify("Fake Lag","OFF",TXTD) end
+end,14)
+mkSl(COM,"Задержка (мс)",50,500,100,"%dms",function(v) flMs=v end,15)
+secL(COM,"strafe",16)
+mkTgl(COM,"Strafe","авто-буст каждые N студов",false,function(v)
+    if v then startStrafe();notify("Strafe","ON ⚡",TC)
+    else stopStrafe();notify("Strafe","OFF",TXTD) end
+end,17)
+mkSl(COM,"Дистанция до буста",2,20,5,"%d st",function(v) stDist=v end,18)
+mkSl(COM,"Сила буста",20,120,55,"%d",function(v) stPow=v end,19)
 
--- ── VISUAL ─────────────────────────────────────────────────────────
-local VIS=tabPages.VISUAL
-secLbl(VIS,"players esp",1)
-mkTglCol(VIS,"Players ESP","ники над головами",Color3.fromRGB(100,200,255),false,function(v)
+-- VISUAL
+local VIS=tPgs.VISUAL
+secL(VIS,"players esp",1)
+mkTglC(VIS,"Players ESP","ники",Color3.fromRGB(100,200,255),false,function(v)
     espPlayers=v
-    if not v then for _,bb in pairs(playerEsp) do if bb and bb.Parent then bb:Destroy() end end;playerEsp={} end
-    notify("Players ESP",v and "Активирован" or "Отключён",Color3.fromRGB(100,200,255))
+    if not v then for _,bb in pairs(pEsp) do if bb and bb.Parent then bb:Destroy() end end;pEsp={} end
+    notify("Players ESP",v and "ON" or "OFF",Color3.fromRGB(100,200,255))
 end,2)
-mkTglCol(VIS,"ESP Расстояние","[Xst] рядом с ником",Color3.fromRGB(180,220,255),false,function(v)
-    espShowDist=v;notify("ESP Dist",v and "Активировано" or "Отключено",Color3.fromRGB(180,220,255))
+mkTglC(VIS,"ESP Расстояние","[Xst] у ника",Color3.fromRGB(180,220,255),false,function(v)
+    espDist=v;notify("ESP Dist",v and "ON" or "OFF",Color3.fromRGB(180,220,255))
 end,3)
-secLbl(VIS,"rarity esp",4)
-mkTglCol(VIS,"Legendary","золотой",Color3.fromRGB(255,215,0),false,function(v) espRarity.Legendary=v end,5)
-mkTglCol(VIS,"Mythic","красный",Color3.fromRGB(255,60,60),false,function(v) espRarity.Mythic=v end,6)
-mkTglCol(VIS,"Brainrot God","фиолетовый",Color3.fromRGB(180,0,255),false,function(v) espRarity.BrainrotGod=v end,7)
-mkTglCol(VIS,"Secret","серый",Color3.fromRGB(120,120,120),false,function(v) espRarity.Secret=v end,8)
-secLbl(VIS,"mutation esp",9)
-mkTglCol(VIS,"Gold","золотая мутация",Color3.fromRGB(255,215,0),false,function(v) espMut.Gold=v end,10)
-mkTglCol(VIS,"Diamond","алмазная мутация",Color3.fromRGB(0,191,255),false,function(v) espMut.Diamond=v end,11)
-mkTglCol(VIS,"Rainbow","радужная мутация",Color3.fromRGB(255,150,200),false,function(v) espMut.Rainbow=v end,12)
-mkTglCol(VIS,"Bloodrot","кровавая мутация",Color3.fromRGB(180,0,0),false,function(v) espMut.Bloodrot=v end,13)
+secL(VIS,"rarity esp",4)
+mkTglC(VIS,"Legendary","золотой",Color3.fromRGB(255,215,0),false,function(v) espR.Legendary=v end,5)
+mkTglC(VIS,"Mythic","красный",Color3.fromRGB(255,60,60),false,function(v) espR.Mythic=v end,6)
+mkTglC(VIS,"Brainrot God","фиолетовый",Color3.fromRGB(180,0,255),false,function(v) espR.BrainrotGod=v end,7)
+mkTglC(VIS,"Secret","серый",Color3.fromRGB(120,120,120),false,function(v) espR.Secret=v end,8)
+secL(VIS,"mutation esp",9)
+mkTglC(VIS,"Gold","золото",Color3.fromRGB(255,215,0),false,function(v) espM.Gold=v end,10)
+mkTglC(VIS,"Diamond","алмаз",Color3.fromRGB(0,191,255),false,function(v) espM.Diamond=v end,11)
+mkTglC(VIS,"Rainbow","радуга",Color3.fromRGB(255,150,200),false,function(v) espM.Rainbow=v end,12)
+mkTglC(VIS,"Bloodrot","кровь",Color3.fromRGB(180,0,0),false,function(v) espM.Bloodrot=v end,13)
 
--- ══════════════════════════════════════════════════════════════════
---  STRAFE  —  авто Self-Push каждые N студов движения
---  Считает пройденное расстояние и при достижении порога
---  применяет BodyVelocity импульс как Self Push
--- ══════════════════════════════════════════════════════════════════
-local strafeOn       = false
-local strafeConn     = nil
-local strafeDist     = 5     -- студов до следующего буста
-local strafePower    = 55    -- сила толчка
-local strafeLastPos  = nil
-local strafeTraveled = 0
-
-local function stopStrafe()
-    strafeOn = false
-    if strafeConn then strafeConn:Disconnect(); strafeConn = nil end
-    strafeTraveled = 0; strafeLastPos = nil
-end
-
-local function startStrafe()
-    if strafeOn then return end; strafeOn = true
-    strafeLastPos = Root and Root.Position or Vector3.zero
-    strafeTraveled = 0
-
-    strafeConn = RunService.Heartbeat:Connect(function(dt)
-        if not strafeOn then return end
-        local ch = LP.Character
-        local rt = ch and ch:FindFirstChild("HumanoidRootPart")
-        local hm = ch and ch:FindFirstChild("Humanoid")
-        if not rt or not hm then return end
-
-        -- Считаем пройденное расстояние (только горизонтальное)
-        local cur = Vector3.new(rt.Position.X, 0, rt.Position.Z)
-        if strafeLastPos then
-            local delta = (cur - Vector3.new(strafeLastPos.X,0,strafeLastPos.Z)).Magnitude
-            strafeTraveled = strafeTraveled + delta
-        end
-        strafeLastPos = rt.Position
-
-        -- Если прошли достаточно — делаем импульс
-        if strafeTraveled >= strafeDist and hm.MoveDirection.Magnitude > 0.05 then
-            strafeTraveled = 0
-            -- Направление = куда смотрит камера
-            local fwd = getCamDir()
-            local bvS = mkBV(rt,"xcStrafeBV")
-            bvS.Velocity = fwd * strafePower + Vector3.new(0, 12, 0)
-            task.delay(0.35, function()
-                if bvS and bvS.Parent then bvS:Destroy() end
-            end)
-        end
-    end)
-end
-
--- ── THEME TAB ──────────────────────────────────────────────────────
-local THPG=tabPages.THEME
-secLbl(THPG,"цветовая тема",1)
-local thOrder={"Blue","Purple","Green","Red","Gold","Pink"}
-local thCards={}
-local function mkThCard(name,col,ord)
+-- THEME
+local THPG=tPgs.THEME
+secL(THPG,"цветовая тема",1)
+local thOrd={"Blue","Purple","Green","Red","Gold","Pink"}
+local thCds={}
+local function mkThC(name,col,ord)
     local card=Instance.new("TextButton",THPG)
     card.Size=UDim2.new(1,0,0,44);card.BackgroundColor3=BG2
     card.BorderSizePixel=0;card.Text="";card.AutoButtonColor=false
     card.ZIndex=13;card.LayoutOrder=ord;cr(8,card)
-    local cs=mkSt(BDR,1,card)
+    local cs=mSt(BDR,1,card)
     local sw=Instance.new("Frame",card);sw.Size=UDim2.new(0,28,0,28)
     sw.Position=UDim2.new(0,10,0.5,-14);sw.BackgroundColor3=col;sw.BorderSizePixel=0;sw.ZIndex=14;cr(14,sw)
-    local tl=mkLbl(card,name,12,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    local tl=mLbl(card,name,12,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
     tl.Size=UDim2.new(1,-60,0,18);tl.Position=UDim2.new(0,46,0,5);tl.ZIndex=14
-    local chk=mkLbl(card,"✓",14,Enum.Font.GothamBold,col)
-    chk.Size=UDim2.new(0,18,0,18);chk.Position=UDim2.new(1,-26,0.5,-9);chk.ZIndex=14;chk.Visible=(col==themeColor)
-    thCards[name]={card=card,st=cs,chk=chk,col=col,tl=tl}
+    local chk=mLbl(card,"✓",14,Enum.Font.GothamBold,col)
+    chk.Size=UDim2.new(0,18,0,18);chk.Position=UDim2.new(1,-26,0.5,-9);chk.ZIndex=14;chk.Visible=(col==TC)
+    thCds[name]={card=card,st=cs,chk=chk,col=col,tl=tl}
     card.MouseButton1Click:Connect(function()
-        applyTheme(col)
-        for k,d in pairs(thCards) do
+        applyTC(col)
+        for k,d in pairs(thCds) do
             d.chk.Visible=(k==name);tw(d.st,.15,{Color=k==name and col or BDR})
             tw(d.card,.15,{BackgroundColor3=k==name and BG3 or BG2})
         end
         notify("Theme","Тема: "..name,col)
     end)
     card.MouseEnter:Connect(function() tw(card,.1,{BackgroundColor3=BG3}) end)
-    card.MouseLeave:Connect(function() tw(card,.1,{BackgroundColor3=(col==themeColor)and BG3 or BG2}) end)
+    card.MouseLeave:Connect(function() tw(card,.1,{BackgroundColor3=(col==TC)and BG3 or BG2}) end)
 end
-for i,name in ipairs(thOrder) do mkThCard(name,THEMES[name],i+1) end
-
-secLbl(THPG,"интерфейс",9)
-mkSlider(THPG,"Прозрачность окна",0,9,0,"%d0%%",function(v) MainFrame.BackgroundTransparency=v/10 end,10)
-mkTglCol(THPG,"Keybinds (F/G/H)","горячие клавиши",themeColor,true,function(v)
-    keybindOn=v;notify("Keybinds",v and "Активированы" or "Отключены",themeColor)
+for i,nm in ipairs(thOrd) do mkThC(nm,THEMES[nm],i+1) end
+secL(THPG,"интерфейс",9)
+mkSl(THPG,"Прозрачность окна",0,9,0,"%d0%%",function(v) MF.BackgroundTransparency=v/10 end,10)
+mkTglC(THPG,"Keybinds (F/G/H)","горячие клавиши",TC,true,function(v)
+    kbOn=v;notify("Keybinds",v and "ON" or "OFF",TC)
 end,11)
 
--- ── DRAG + ОТКРЫТИЕ ────────────────────────────────────────────────
--- ── THEME: GUI переключатель ──────────────────────────────────────
-secLbl(THPG,"выбор интерфейса",12)
-
-local guiMode = "cs"  -- "cs" | "dropdown"
-local dropdownGui = nil  -- хранит DropDown GUI если активен
-
-local guiChoiceCards = {}
-local function mkGuiCard(key,title,desc,ord)
+-- GUI выбор
+secL(THPG,"выбор интерфейса",12)
+local gCards={}
+local dropGui=nil
+local function mkGC(key,title,desc,ord)
     local card=Instance.new("TextButton",THPG)
     card.Size=UDim2.new(1,0,0,52);card.BackgroundColor3=BG2
     card.BorderSizePixel=0;card.Text="";card.AutoButtonColor=false
     card.ZIndex=13;card.LayoutOrder=ord;cr(8,card)
-    local cs=mkSt(BDR,1,card)
-    local bar2=Instance.new("Frame",card);bar2.Size=UDim2.new(0,4,0.65,0)
-    bar2.Position=UDim2.new(0,0,0.175,0);bar2.BackgroundColor3=themeColor
-    bar2.BorderSizePixel=0;bar2.ZIndex=14;cr(2,bar2);regTheme(bar2,"BackgroundColor3")
-    local tl=mkLbl(card,title,12,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
+    local cs=mSt(BDR,1,card)
+    local bar3=Instance.new("Frame",card);bar3.Size=UDim2.new(0,4,0.65,0)
+    bar3.Position=UDim2.new(0,0,0.175,0);bar3.BackgroundColor3=TC
+    bar3.BorderSizePixel=0;bar3.ZIndex=14;cr(2,bar3);regTC(bar3,"BackgroundColor3")
+    local tl=mLbl(card,title,12,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
     tl.Size=UDim2.new(1,-16,0,20);tl.Position=UDim2.new(0,14,0,8);tl.ZIndex=14
-    local dl=mkLbl(card,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
+    local dl=mLbl(card,desc,9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
     dl.Size=UDim2.new(1,-16,0,14);dl.Position=UDim2.new(0,14,0,28);dl.ZIndex=14
-    local chk=mkLbl(card,"✓",13,Enum.Font.GothamBold,themeColor)
+    local chk=mLbl(card,"✓",13,Enum.Font.GothamBold,TC)
     chk.Size=UDim2.new(0,18,0,18);chk.Position=UDim2.new(1,-26,0.5,-9);chk.ZIndex=14
-    chk.Visible=(key==guiMode);regTheme(chk,"TextColor3")
-    guiChoiceCards[key]={card=card,st=cs,tl=tl,chk=chk}
+    chk.Visible=(key==guiMode);regTC(chk,"TextColor3")
+    gCards[key]={card=card,st=cs,tl=tl,chk=chk}
     card.MouseEnter:Connect(function() if guiMode~=key then tw(card,.1,{BackgroundColor3=BG3}) end end)
     card.MouseLeave:Connect(function() if guiMode~=key then tw(card,.1,{BackgroundColor3=BG2}) end end)
     return card
 end
+local CsGC  = mkGC("cs",      "CS GUI",       "текущий xclient интерфейс",13)
+local DropGC = mkGC("dropdown","Dropdown GUI", "панели с поиском функций",14)
 
-local CsGuiCard       = mkGuiCard("cs",      "CS GUI",      "текущий интерфейс xclient",13)
-local DropdownGuiCard = mkGuiCard("dropdown","Dropdown GUI","панели с поиском модулей",14)
-
-local function refreshGuiCards()
-    for k,d in pairs(guiChoiceCards) do
+local function refGCards()
+    for k,d in pairs(gCards) do
         local on=(k==guiMode)
-        tw(d.st,.15,{Color=on and themeColor or BDR})
+        tw(d.st,.15,{Color=on and TC or BDR})
         tw(d.card,.15,{BackgroundColor3=on and BG3 or BG2})
-        d.tl.TextColor3=on and themeColor or TXT
-        d.chk.Visible=on
+        d.tl.TextColor3=on and TC or TXT;d.chk.Visible=on
     end
 end
 
--- Функция создания DropDown GUI
-local function buildDropdownGui()
-    if dropdownGui and dropdownGui.Parent then dropdownGui:Destroy() end
-
+-- Dropdown GUI builder
+local function buildDrop()
+    if dropGui and dropGui.Parent then dropGui:Destroy() end
     local dSG=Instance.new("ScreenGui")
-    dSG.Name="xclient_dropdown";dSG.ResetOnSpawn=false
+    dSG.Name="xclient_drop";dSG.ResetOnSpawn=false
     dSG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
     if typeof(syn)=="table" and typeof(syn.protect_gui)=="function" then pcall(syn.protect_gui,dSG) end
-    dSG.Parent=GuiParent
-    dropdownGui=dSG
-
-    local mf=Instance.new("Frame",dSG)
-    mf.Name="MainFrame";mf.Size=UDim2.new(0,520,0,0)
-    mf.Position=UDim2.new(0.5,-260,0.5,-200)
-    mf.BackgroundColor3=Color3.fromRGB(20,20,25)
-    mf.BackgroundTransparency=0.05;mf.BorderSizePixel=0;mf.ClipsDescendants=true
-    cr(12,mf);local mfSt=mkSt(themeColor,1.5,mf);regTheme(mfSt,"Color")
-
-    -- Поиск
-    local search=Instance.new("TextBox",mf)
-    search.Size=UDim2.new(1,-40,0,30);search.Position=UDim2.new(0,20,0,12)
-    search.BackgroundColor3=Color3.fromRGB(32,32,38);search.TextColor3=WHT
-    search.PlaceholderText="🔍 Поиск функций...";search.ClearTextOnFocus=false
-    search.BorderSizePixel=0;search.Font=Enum.Font.GothamMedium;search.TextSize=13
-    cr(6,search);search.ZIndex=12
-
-    -- Контейнер панелей
-    local catFrame=Instance.new("Frame",mf)
-    catFrame.Size=UDim2.new(1,-40,1,-56);catFrame.Position=UDim2.new(0,20,0,50)
-    catFrame.BackgroundTransparency=1
-
-    local grid=Instance.new("UIGridLayout",catFrame)
-    grid.CellSize=UDim2.new(0,150,0,260);grid.CellPadding=UDim2.new(0,10,0,10)
-    grid.FillDirection=Enum.FillDirection.Horizontal
-    grid.HorizontalAlignment=Enum.HorizontalAlignment.Center
-
-    local allBtns={}
-
-    -- Данные: категория → список функций xclient
+    dSG.Parent=GuiParent;dropGui=dSG
+    local dmf=Instance.new("Frame",dSG)
+    dmf.Size=UDim2.new(0,520,0,0);dmf.Position=UDim2.new(0.5,-260,0.5,-200)
+    dmf.BackgroundColor3=Color3.fromRGB(14,14,18);dmf.BackgroundTransparency=0.05
+    dmf.BorderSizePixel=0;dmf.ClipsDescendants=true;cr(12,dmf)
+    local dmfSt=mSt(TC,1.5,dmf);regTC(dmfSt,"Color")
+    local srch=Instance.new("TextBox",dmf)
+    srch.Size=UDim2.new(1,-40,0,30);srch.Position=UDim2.new(0,20,0,10)
+    srch.BackgroundColor3=Color3.fromRGB(22,22,28);srch.TextColor3=WHT
+    srch.PlaceholderText="🔍 Поиск функций...";srch.ClearTextOnFocus=false
+    srch.BorderSizePixel=0;srch.Font=Enum.Font.GothamMedium;srch.TextSize=13;cr(6,srch)
+    local catFr=Instance.new("Frame",dmf)
+    catFr.Size=UDim2.new(1,-40,1,-52);catFr.Position=UDim2.new(0,20,0,48)
+    catFr.BackgroundTransparency=1
+    local grid2=Instance.new("UIGridLayout",catFr)
+    grid2.CellSize=UDim2.new(0,148,0,250);grid2.CellPadding=UDim2.new(0,10,0,10)
+    grid2.FillDirection=Enum.FillDirection.Horizontal
+    grid2.HorizontalAlignment=Enum.HorizontalAlignment.Center
+    local allB={}
     local ddData={
-        MOV={
-            ["Magic Flight"]   = function(v) if v then startFlight() else stopFlight() end end,
-            ["Magic Resolver"] = function(v) resolverOn=v end,
-            ["Damage Fly"]     = function(v) setDF(v) end,
-            ["Infinite Jump"]  = function(v) if v then startInfJump() else stopInfJump() end end,
-            ["Speed Walk"]     = function(v) if v then startSpeedWalk() else stopSpeedWalk() end end,
-            ["High Jump"]      = function(v) if v then startHighJump() else stopHighJump() end end,
-            ["Strafe"]         = function(v) if v then startStrafe() else stopStrafe() end end,
-        },
-        COM={
-            ["SmartDodge"]     = function(v) dodgeOn=v end,
-            ["Float"]          = function(v) if v then startFloat() else stopFloat() end end,
-            ["Noclip"]         = function(v) if v then startNoclip() else stopNoclip() end end,
-            ["Long Jump"]      = function(v) if v then startLongJump() else stopLongJump() end end,
-            ["Anti-Ragdoll"]   = function(v) if v then startAntiRagdoll() else stopAntiRagdoll() end end,
-            ["Anti-Reset"]     = function(v) if v then startAntiReset() else stopAntiReset() end end,
-            ["Auto Platform"]  = function(v) if v then startAutoPlatform() else stopAutoPlatform() end end,
-            ["Spin"]           = function(v) if v then startSpin() else stopSpin() end end,
-        },
-        VISUAL={
-            ["Players ESP"]    = function(v) espPlayers=v end,
-            ["Legendary ESP"]  = function(v) espRarity.Legendary=v end,
-            ["Mythic ESP"]     = function(v) espRarity.Mythic=v end,
-            ["Brainrot God"]   = function(v) espRarity.BrainrotGod=v end,
-        },
+        MOV={["Magic Flight"]=function(v) if v then startFlight() else stopFlight() end end,
+            ["Resolver"]=function(v) resolverOn=v end,
+            ["Damage Fly"]=function(v) setDF(v) end,
+            ["Inf Jump"]=function(v) if v then startIJ() else stopIJ() end end,
+            ["Speed Walk"]=function(v) if v then startSW() else stopSW() end end,
+            ["High Jump"]=function(v) if v then startHJ() else stopHJ() end end,
+            ["Strafe"]=function(v) if v then startStrafe() else stopStrafe() end end,},
+        COM={["SmartDodge"]=function(v) dodgeOn=v end,
+            ["Float"]=function(v) if v then startFloat() else stopFloat() end end,
+            ["Noclip"]=function(v) if v then startNC() else stopNC() end end,
+            ["Long Jump"]=function(v) if v then startLJ() else stopLJ() end end,
+            ["Anti-Ragdoll"]=function(v) if v then startAR() else stopAR() end end,
+            ["Anti-Reset"]=function(v) if v then startAntiRst() else stopAntiRst() end end,
+            ["Spin"]=function(v) if v then startSpin() else stopSpin() end end,
+            ["Fake Lag"]=function(v) if v then startFL() else stopFL() end end,},
+        VISUAL={["Players ESP"]=function(v) espPlayers=v end,
+            ["Legendary"]=function(v) espR.Legendary=v end,
+            ["Mythic"]=function(v) espR.Mythic=v end,
+            ["Brainrot God"]=function(v) espR.BrainrotGod=v end,},
     }
-
     for catName,mods in pairs(ddData) do
-        local panel=Instance.new("Frame",catFrame)
-        panel.BackgroundColor3=Color3.fromRGB(28,28,34)
-        panel.BorderSizePixel=0;panel.ClipsDescendants=true;cr(8,panel)
-
-        -- Шапка панели
-        local hdr=Instance.new("Frame",panel)
-        hdr.Size=UDim2.new(1,0,0,26);hdr.BackgroundColor3=Color3.fromRGB(38,38,46)
-        hdr.BorderSizePixel=0;cr(8,hdr)
-        local fix=Instance.new("Frame",hdr);fix.Size=UDim2.new(1,0,0,10)
-        fix.Position=UDim2.new(0,0,1,-10);fix.BackgroundColor3=Color3.fromRGB(38,38,46)
-        fix.BorderSizePixel=0
-        local htl=mkLbl(hdr,catName,12,Enum.Font.GothamBold,WHT,Enum.TextXAlignment.Left)
-        htl.Size=UDim2.new(1,-10,1,0);htl.Position=UDim2.new(0,10,0,0)
-        -- Цветная полоска под шапкой
-        local hline=Instance.new("Frame",hdr);hline.Size=UDim2.new(1,0,0,2)
-        hline.Position=UDim2.new(0,0,1,-2);hline.BackgroundColor3=themeColor
-        hline.BorderSizePixel=0;regTheme(hline,"BackgroundColor3")
-
-        -- Список кнопок
-        local sc=Instance.new("ScrollingFrame",panel)
-        sc.Size=UDim2.new(1,0,1,-26);sc.Position=UDim2.new(0,0,0,26)
-        sc.BackgroundTransparency=1;sc.BorderSizePixel=0;sc.ScrollBarThickness=3
-        sc.CanvasSize=UDim2.new(0,0,0,0);sc.AutomaticCanvasSize=Enum.AutomaticSize.Y
-        local lay=Instance.new("UIListLayout",sc);lay.Padding=UDim.new(0,3)
-        Instance.new("UIPadding",sc).PaddingTop=UDim.new(0,4)
-        Instance.new("UIPadding",sc).PaddingLeft=UDim.new(0,4)
-        Instance.new("UIPadding",sc).PaddingRight=UDim.new(0,4)
-
+        local pan=Instance.new("Frame",catFr)
+        pan.BackgroundColor3=Color3.fromRGB(20,20,26);pan.BorderSizePixel=0;pan.ClipsDescendants=true;cr(8,pan)
+        local phd=Instance.new("Frame",pan);phd.Size=UDim2.new(1,0,0,26)
+        phd.BackgroundColor3=Color3.fromRGB(28,28,36);phd.BorderSizePixel=0;cr(8,phd)
+        local pfix=Instance.new("Frame",phd);pfix.Size=UDim2.new(1,0,0,10);pfix.Position=UDim2.new(0,0,1,-10)
+        pfix.BackgroundColor3=Color3.fromRGB(28,28,36);pfix.BorderSizePixel=0
+        local phl=mLbl(phd,catName,11,Enum.Font.GothamBold,WHT,Enum.TextXAlignment.Left)
+        phl.Size=UDim2.new(1,-10,1,0);phl.Position=UDim2.new(0,10,0,0)
+        local plin=Instance.new("Frame",phd);plin.Size=UDim2.new(1,0,0,2);plin.Position=UDim2.new(0,0,1,-2)
+        plin.BackgroundColor3=TC;plin.BorderSizePixel=0;regTC(plin,"BackgroundColor3")
+        local psc=Instance.new("ScrollingFrame",pan)
+        psc.Size=UDim2.new(1,0,1,-26);psc.Position=UDim2.new(0,0,0,26)
+        psc.BackgroundTransparency=1;psc.BorderSizePixel=0;psc.ScrollBarThickness=3
+        psc.CanvasSize=UDim2.new(0,0,0,0);psc.AutomaticCanvasSize=Enum.AutomaticSize.Y
+        local play=Instance.new("UIListLayout",psc);play.Padding=UDim.new(0,3)
+        Instance.new("UIPadding",psc).PaddingTop=UDim.new(0,4)
+        Instance.new("UIPadding",psc).PaddingLeft=UDim.new(0,4)
+        Instance.new("UIPadding",psc).PaddingRight=UDim.new(0,4)
         for modName,modFn in pairs(mods) do
-            local btn=Instance.new("TextButton",sc)
-            btn.Size=UDim2.new(1,0,0,26);btn.BackgroundColor3=Color3.fromRGB(38,38,46)
-            btn.TextColor3=Color3.fromRGB(200,200,210);btn.Font=Enum.Font.GothamMedium
-            btn.TextSize=11;btn.Text=modName;btn.BorderSizePixel=0;btn.AutoButtonColor=false
-            cr(5,btn)
-            local enabled=false
-            btn.MouseButton1Click:Connect(function()
-                enabled=not enabled
-                tw(btn,.15,{BackgroundColor3=enabled and themeColor or Color3.fromRGB(38,38,46)})
-                btn.TextColor3=enabled and WHT or Color3.fromRGB(200,200,210)
-                pcall(modFn,enabled)
+            local btn2=Instance.new("TextButton",psc)
+            btn2.Size=UDim2.new(1,0,0,26);btn2.BackgroundColor3=Color3.fromRGB(28,28,38)
+            btn2.TextColor3=Color3.fromRGB(190,190,210);btn2.Font=Enum.Font.GothamMedium
+            btn2.TextSize=11;btn2.Text=modName;btn2.BorderSizePixel=0;btn2.AutoButtonColor=false;cr(5,btn2)
+            local en=false
+            btn2.MouseButton1Click:Connect(function()
+                en=not en
+                tw(btn2,.15,{BackgroundColor3=en and TC or Color3.fromRGB(28,28,38)})
+                btn2.TextColor3=en and WHT or Color3.fromRGB(190,190,210)
+                pcall(modFn,en)
             end)
-            btn.MouseEnter:Connect(function()
-                if not enabled then tw(btn,.1,{BackgroundColor3=Color3.fromRGB(50,50,60)}) end end)
-            btn.MouseLeave:Connect(function()
-                if not enabled then tw(btn,.1,{BackgroundColor3=Color3.fromRGB(38,38,46)}) end end)
-            allBtns[modName]=btn
+            btn2.MouseEnter:Connect(function() if not en then tw(btn2,.1,{BackgroundColor3=Color3.fromRGB(38,38,50)}) end end)
+            btn2.MouseLeave:Connect(function() if not en then tw(btn2,.1,{BackgroundColor3=Color3.fromRGB(28,28,38)}) end end)
+            allB[modName]=btn2
         end
     end
-
-    -- Поиск
-    local ddNotify = Instance.new("TextLabel",dSG)
-    ddNotify.Size=UDim2.new(0,200,0,24);ddNotify.Position=UDim2.new(.5,-100,.9,0)
-    ddNotify.BackgroundColor3=Color3.fromRGB(20,20,26);ddNotify.BorderSizePixel=0
-    ddNotify.Text="ПКМ на кнопке = доп.настройки";ddNotify.TextColor3=TXTD
-    ddNotify.TextSize=10;ddNotify.Font=Enum.Font.Gotham;cr(6,ddNotify)
-
-    search:GetPropertyChangedSignal("Text"):Connect(function()
-        local q=search.Text:lower()
-        for nm,b in pairs(allBtns) do b.Visible=nm:lower():find(q,1,true)~=nil end
+    srch:GetPropertyChangedSignal("Text"):Connect(function()
+        local q=srch.Text:lower()
+        for nm,b in pairs(allB) do b.Visible=nm:lower():find(q,1,true)~=nil end
     end)
-
-    -- Открытие по кнопке Insert
-    local ddOpen=false
-    local function toggleDD()
-        ddOpen=not ddOpen
-        local tgt=ddOpen and UDim2.new(0,520,0,380) or UDim2.new(0,520,0,0)
-        TweenSvc:Create(mf,TweenInfo.new(.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=tgt}):Play()
-        ddNotify.Visible=ddOpen
+    local ddO=false
+    local function togDD()
+        ddO=not ddO
+        local tgt=ddO and UDim2.new(0,520,0,360) or UDim2.new(0,520,0,0)
+        TweenSvc:Create(dmf,TweenInfo.new(.3,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=tgt}):Play()
     end
-
-    -- Drag
-    makeDraggable(mf)
-
-    -- Показываем сразу
-    task.delay(.1,toggleDD)
-
-    notify("GUI","Dropdown GUI активирован",themeColor)
-    return dSG
+    makeDrag(dmf);task.delay(.1,togDD)
+    notify("GUI","Dropdown GUI активирован",TC)
 end
 
--- Переключатель GUI стиля
-CsGuiCard.MouseButton1Click:Connect(function()
-    if guiMode=="cs" then return end
-    guiMode="cs"
-    refreshGuiCards()
-    -- Скрываем dropdown, показываем CS
-    if dropdownGui and dropdownGui.Parent then dropdownGui:Destroy();dropdownGui=nil end
-    MainFrame.Visible=true
-    notify("GUI","Интерфейс: CS GUI",themeColor)
+CsGC.MouseButton1Click:Connect(function()
+    if guiMode=="cs" then return end;guiMode="cs";refGCards()
+    if dropGui and dropGui.Parent then dropGui:Destroy();dropGui=nil end
+    MF.Visible=true;notify("GUI","CS GUI активирован",TC)
 end)
-
-DropdownGuiCard.MouseButton1Click:Connect(function()
-    if guiMode=="dropdown" then return end
-    guiMode="dropdown"
-    refreshGuiCards()
-    -- Скрываем CS GUI
+DropGC.MouseButton1Click:Connect(function()
+    if guiMode=="dropdown" then return end;guiMode="dropdown";refGCards()
     menuOpen=false
-    TweenSvc:Create(MainFrame,TW_C,{Position=POS_CLOSE}):Play()
-    task.delay(.3,function()
-        MainFrame.Visible=false
-        buildDropdownGui()
-    end)
+    local POS_CL=UDim2.new(.5,-WW/2,-1,0)
+    TweenSvc:Create(MF,TweenInfo.new(.26,Enum.EasingStyle.Quint,Enum.EasingDirection.In),{Position=POS_CL}):Play()
+    task.delay(.3,function() MF.Visible=false;buildDrop() end)
 end)
 
-makeDraggable(MainFrame)
-local POS_OPEN=UDim2.new(.5,-WIN_W/2,.5,-WIN_H/2)
-local POS_CLOSE=UDim2.new(.5,-WIN_W/2,-1,0)
-local TW_O=TweenInfo.new(.42,Enum.EasingStyle.Back,Enum.EasingDirection.Out)
+-- ══ DRAG + ОТКРЫТИЕ ═══════════════════════════════════════════════
+makeDrag(MF)
+local POS_OPEN=UDim2.new(.5,-WW/2,.5,-WH/2)
+local POS_CLOSE=UDim2.new(.5,-WW/2,-1,0)
+local TW_O=TweenInfo.new(.42,Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local TW_C=TweenInfo.new(.26,Enum.EasingStyle.Quint,Enum.EasingDirection.In)
 
-IconBtn.MouseButton1Click:Connect(function()
+IB.MouseButton1Click:Connect(function()
     menuOpen=not menuOpen
     if menuOpen then
-        MainFrame.Visible=true;MainFrame.Position=POS_CLOSE
-        TweenSvc:Create(MainFrame,TW_O,{Position=POS_OPEN}):Play()
+        MF.Visible=true;MF.Position=POS_CLOSE
+        TweenSvc:Create(MF,TW_O,{Position=POS_OPEN}):Play()
     else
-        TweenSvc:Create(MainFrame,TW_C,{Position=POS_CLOSE}):Play()
-        task.delay(.28,function() MainFrame.Visible=false end)
+        TweenSvc:Create(MF,TW_C,{Position=POS_CLOSE}):Play()
+        task.delay(.28,function() MF.Visible=false end)
     end
 end)
-switchTab("MOV")
+swTab("MOV")
 
--- ── DAMAGE FLY HUD ─────────────────────────────────────────────────
-local HUD_SZ=74;local RW=5
-local DfHud=Instance.new("Frame",SG)
-DfHud.Size=UDim2.new(0,HUD_SZ+20,0,HUD_SZ+28);DfHud.AnchorPoint=Vector2.new(.5,1)
-DfHud.Position=UDim2.new(.5,0,1,-18);DfHud.BackgroundTransparency=1
-DfHud.BorderSizePixel=0;DfHud.ZIndex=40;DfHud.Visible=false
-local DfTrk=Instance.new("Frame",DfHud);DfTrk.Size=UDim2.new(0,HUD_SZ,0,HUD_SZ)
-DfTrk.AnchorPoint=Vector2.new(.5,.5);DfTrk.Position=UDim2.new(.5,0,0,HUD_SZ/2+2)
-DfTrk.BackgroundColor3=BDR;DfTrk.BorderSizePixel=0;DfTrk.ZIndex=41;cr(HUD_SZ/2,DfTrk)
-local IN2=HUD_SZ-RW*2
-local DfIn=Instance.new("Frame",DfTrk);DfIn.Size=UDim2.new(0,IN2,0,IN2)
+-- ══ DAMAGE FLY HUD ════════════════════════════════════════════════
+local HZ=74;local RW=5
+local DfH=Instance.new("Frame",SG)
+DfH.Size=UDim2.new(0,HZ+20,0,HZ+28);DfH.AnchorPoint=Vector2.new(.5,1)
+DfH.Position=UDim2.new(.5,0,1,-18);DfH.BackgroundTransparency=1
+DfH.BorderSizePixel=0;DfH.ZIndex=40;DfH.Visible=false;dfHudFrame=DfH
+local DfTr=Instance.new("Frame",DfH);DfTr.Size=UDim2.new(0,HZ,0,HZ)
+DfTr.AnchorPoint=Vector2.new(.5,.5);DfTr.Position=UDim2.new(.5,0,0,HZ/2+2)
+DfTr.BackgroundColor3=BDR;DfTr.BorderSizePixel=0;DfTr.ZIndex=41;cr(HZ/2,DfTr)
+local IN2=HZ-RW*2
+local DfIn=Instance.new("Frame",DfTr);DfIn.Size=UDim2.new(0,IN2,0,IN2)
 DfIn.AnchorPoint=Vector2.new(.5,.5);DfIn.Position=UDim2.new(.5,0,.5,0)
 DfIn.BackgroundColor3=Color3.fromRGB(5,5,8);DfIn.BorderSizePixel=0;DfIn.ZIndex=42;cr(IN2/2,DfIn)
 for i=1,32 do
     local ang=((i-1)/32)*math.pi*2-math.pi/2
-    local r2=(HUD_SZ/2)-RW/2-1
-    local seg=Instance.new("Frame",DfHud);seg.Size=UDim2.new(0,RW+1,0,RW+1)
+    local r2=(HZ/2)-RW/2-1
+    local seg=Instance.new("Frame",DfH);seg.Size=UDim2.new(0,RW+1,0,RW+1)
     seg.AnchorPoint=Vector2.new(.5,.5)
-    seg.Position=UDim2.new(0,HUD_SZ/2+math.cos(ang)*r2+10,0,HUD_SZ/2+math.sin(ang)*r2+2)
-    seg.Rotation=math.deg(ang)+90;seg.BackgroundColor3=themeColor
+    seg.Position=UDim2.new(0,HZ/2+math.cos(ang)*r2+10,0,HZ/2+math.sin(ang)*r2+2)
+    seg.Rotation=math.deg(ang)+90;seg.BackgroundColor3=TC
     seg.BorderSizePixel=0;seg.ZIndex=43;cr(2,seg);table.insert(dfSegs,seg)
 end
-local DfPct=mkLbl(DfHud,"100",14,Enum.Font.GothamBold,WHT)
-DfPct.Size=UDim2.new(0,HUD_SZ,0,HUD_SZ);DfPct.AnchorPoint=Vector2.new(.5,.5)
-DfPct.Position=UDim2.new(.5,0,0,HUD_SZ/2+2);DfPct.ZIndex=44
-local DfLbl=mkLbl(DfHud,"DAMAGE FLY",8,Enum.Font.GothamBold,TXTD)
-DfLbl.Size=UDim2.new(1,0,0,14);DfLbl.Position=UDim2.new(0,0,1,-12);DfLbl.ZIndex=44
+local DfPL=mLbl(DfH,"100",14,Enum.Font.GothamBold,WHT)
+DfPL.Size=UDim2.new(0,HZ,0,HZ);DfPL.AnchorPoint=Vector2.new(.5,.5)
+DfPL.Position=UDim2.new(.5,0,0,HZ/2+2);DfPL.ZIndex=44;dfPctLbl=DfPL
+local DfLb=mLbl(DfH,"DAMAGE FLY",8,Enum.Font.GothamBold,TXTD)
+DfLb.Size=UDim2.new(1,0,0,14);DfLb.Position=UDim2.new(0,0,1,-12);DfLb.ZIndex=44
 
--- Патч updateDfHud: добавляем текст процента и видимость HUD
-local _origUDH=updateDfHud
-updateDfHud=function(p)
-    _origUDH(p)
-    DfPct.Text=tostring(math.floor(math.clamp(p,0,100)))
-    DfHud.Visible=dfOn
-end
-
--- ══════════════════════════════════════════════════════════════════
---  SPEED WALK  —  повышает WalkSpeed персонажа
---  Слайдер 16–100, восстанавливает при отключении
--- ══════════════════════════════════════════════════════════════════
-local speedWalkOn  = false
-local speedWalkVal = 32
-local speedWalkConn= nil
-
-local function stopSpeedWalk()
-    speedWalkOn = false
-    if speedWalkConn then speedWalkConn:Disconnect(); speedWalkConn = nil end
-    local hm = LP.Character and LP.Character:FindFirstChild("Humanoid")
-    if hm then hm.WalkSpeed = 16 end
-end
-
-local function startSpeedWalk()
-    if speedWalkOn then return end; speedWalkOn = true
-    speedWalkConn = RunService.Heartbeat:Connect(function()
-        local hm = LP.Character and LP.Character:FindFirstChild("Humanoid")
-        if hm and speedWalkOn then hm.WalkSpeed = speedWalkVal end
-    end)
-end
-
--- ══════════════════════════════════════════════════════════════════
---  HIGH JUMP  —  разовое усиление прыжка через BodyVelocity
---  Каждое нажатие Space добавляет вертикальный импульс
--- ══════════════════════════════════════════════════════════════════
-local highJumpOn   = false
-local highJumpPow  = 80
-local highJumpConn = nil
-
-local function stopHighJump()
-    highJumpOn = false
-    if highJumpConn then highJumpConn:Disconnect(); highJumpConn = nil end
-end
-
-local function startHighJump()
-    if highJumpOn then return end; highJumpOn = true
-    highJumpConn = UIS.JumpRequest:Connect(function()
-        if not highJumpOn then return end
-        local ch = LP.Character
-        local rt = ch and ch:FindFirstChild("HumanoidRootPart")
-        local hm = ch and ch:FindFirstChild("Humanoid")
-        if not rt or not hm then return end
-        local bvHJ = mkBV(rt, "xcHJBV")
-        bvHJ.Velocity = Vector3.new(
-            rt.AssemblyLinearVelocity.X,
-            highJumpPow,
-            rt.AssemblyLinearVelocity.Z
-        )
-        task.delay(0.3, function()
-            if bvHJ and bvHJ.Parent then bvHJ:Destroy() end
-        end)
-    end)
-end
-
--- ══════════════════════════════════════════════════════════════════
---  FAKE LAG  —  имитирует лаг через искусственные паузы
---  Полезно чтобы избежать некоторых серверных проверок
--- ══════════════════════════════════════════════════════════════════
-local fakeLagOn    = false
-local fakeLagMs    = 100   -- миллисекунды задержки
-local fakeLagConn  = nil
-local fakeLagTimer = 0
-
-local function stopFakeLag()
-    fakeLagOn = false
-    if fakeLagConn then fakeLagConn:Disconnect(); fakeLagConn = nil end
-end
-
-local function startFakeLag()
-    if fakeLagOn then return end; fakeLagOn = true
-    fakeLagConn = RunService.Heartbeat:Connect(function(dt)
-        if not fakeLagOn then return end
-        fakeLagTimer = fakeLagTimer + dt
-        if fakeLagTimer >= (fakeLagMs / 1000) then
-            fakeLagTimer = 0
-            task.wait(fakeLagMs / 1000)
-        end
-    end)
-end
-
--- ══════════════════════════════════════════════════════════════════
---  SPIN  —  крутит персонажа по оси Y
--- ══════════════════════════════════════════════════════════════════
-local spinOn   = false
-local spinSpeed= 8    -- оборотов в секунду (угловая скорость)
-local spinConn = nil
-local spinAngle= 0
-
-local function stopSpin()
-    spinOn = false
-    if spinConn then spinConn:Disconnect(); spinConn = nil end
-    if spinBG and spinBG.Parent then spinBG:Destroy(); spinBG = nil end
-end
-spinBG = nil
-
-local function startSpin()
-    if spinOn then return end; spinOn = true
-    spinBG = Instance.new("BodyAngularVelocity")
-    spinBG.Name       = "xcSpinBAV"
-    spinBG.MaxTorque  = Vector3.new(0, 1e6, 0)
-    spinBG.AngularVelocity = Vector3.new(0, spinSpeed * math.pi * 2, 0)
-    spinBG.Parent     = Root
-    spinConn = RunService.Heartbeat:Connect(function()
-        if not spinOn then stopSpin(); return end
-        if not (Root and Root.Parent) then stopSpin(); return end
-        -- Поддерживаем скорость вращения
-        if spinBG and spinBG.Parent then
-            spinBG.AngularVelocity = Vector3.new(0, spinSpeed * math.pi * 2, 0)
-        end
-    end)
-end
-
--- ══════════════════════════════════════════════════════════════════
---  ДОБАВЛЯЕМ В MOV: SpeedWalk + HighJump
--- ══════════════════════════════════════════════════════════════════
-do
-    local MOV = tabPages.MOV
-
-    -- Секция extras
-    secLbl(MOV, "extras", 9)
-
-    -- SpeedWalk слайдер + toggle
-    do
-        local swRow = Instance.new("Frame", MOV)
-        swRow.Size = UDim2.new(1,0,0,76); swRow.BackgroundColor3 = BG2
-        swRow.BorderSizePixel = 0; swRow.ZIndex = 13; swRow.LayoutOrder = 10
-        local swBar = Instance.new("Frame", swRow)
-        swBar.Size = UDim2.new(0,2,0.6,0); swBar.Position = UDim2.new(0,0,0.15,0)
-        swBar.BackgroundColor3 = BDR; swBar.BorderSizePixel = 0; swBar.ZIndex = 14; cr(2,swBar)
-        local swLbl = mkLbl(swRow,"Speed Walk",11,Enum.Font.GothamBold,TXT,Enum.TextXAlignment.Left)
-        swLbl.Size = UDim2.new(1,-62,0,18); swLbl.Position = UDim2.new(0,12,0,6); swLbl.ZIndex = 14
-        local swDesc = mkLbl(swRow,"скорость хождения",9,Enum.Font.Gotham,TXTD,Enum.TextXAlignment.Left)
-        swDesc.Size = UDim2.new(1,-62,0,12); swDesc.Position = UDim2.new(0,12,0,24); swDesc.ZIndex = 14
-        -- Слайдер
-        local swTrk = Instance.new("Frame",swRow)
-        swTrk.Size = UDim2.new(1,-24,0,4); swTrk.Position = UDim2.new(0,12,0,44)
-        swTrk.BackgroundColor3 = BDR; swTrk.BorderSizePixel = 0; swTrk.ZIndex = 14; cr(2,swTrk)
-        local swFill = Instance.new("Frame",swTrk)
-        swFill.Size = UDim2.new(0.25,0,1,0)
-        swFill.BackgroundColor3 = themeColor; swFill.BorderSizePixel = 0; swFill.ZIndex = 15; cr(2,swFill)
-        regTheme(swFill,"BackgroundColor3")
-        local swKnob = Instance.new("Frame",swTrk)
-        swKnob.Size = UDim2.new(0,14,0,14); swKnob.AnchorPoint = Vector2.new(.5,.5)
-        swKnob.Position = UDim2.new(0.25,0,.5,0)
-        swKnob.BackgroundColor3 = WHT; swKnob.BorderSizePixel = 0; swKnob.ZIndex = 16; cr(7,swKnob)
-        local swVal = mkLbl(swRow,tostring(speedWalkVal),10,Enum.Font.GothamBold,themeColor,Enum.TextXAlignment.Right)
-        swVal.Size = UDim2.new(0,40,0,14); swVal.Position = UDim2.new(1,-50,0,8); swVal.ZIndex = 14
-        regTheme(swVal,"TextColor3")
-        local swDrag = false
-        local function swUpd(ax)
-            local ta = swTrk.AbsolutePosition.X; local tw2 = swTrk.AbsoluteSize.X
-            local r = math.clamp((ax-ta)/tw2,0,1)
-            speedWalkVal = 16 + math.floor(84*r+.5)
-            swFill.Size = UDim2.new(r,0,1,0); swKnob.Position = UDim2.new(r,0,.5,0)
-            swVal.Text = tostring(speedWalkVal)
-        end
-        swKnob.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then swDrag=true end end)
-        swTrk.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then swDrag=true;swUpd(i.Position.X) end end)
-        UIS.InputChanged:Connect(function(i) if swDrag and(i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then swUpd(i.Position.X) end end)
-        UIS.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then swDrag=false end end)
-        -- Пилюля
-        local swPill = Instance.new("Frame",swRow)
-        swPill.Size = UDim2.new(0,36,0,18); swPill.Position = UDim2.new(1,-46,0,6)
-        swPill.BackgroundColor3 = BDR; swPill.BorderSizePixel = 0; swPill.ZIndex = 14; cr(9,swPill)
-        local swKnob2 = Instance.new("Frame",swPill)
-        swKnob2.Size = UDim2.new(0,12,0,12); swKnob2.Position = UDim2.new(0,3,0.5,-6)
-        swKnob2.BackgroundColor3 = TXTD; swKnob2.BorderSizePixel = 0; swKnob2.ZIndex = 15; cr(6,swKnob2)
-        local swState = false
-        local function swRp()
-            tw(swPill,.18,{BackgroundColor3=swState and themeColor or BDR})
-            tw(swKnob2,.18,{Position=swState and UDim2.new(0,21,0.5,-6) or UDim2.new(0,3,0.5,-6),BackgroundColor3=swState and WHT or TXTD})
-            tw(swBar,.15,{BackgroundColor3=swState and themeColor or BDR})
-        end
-        local swBtn = Instance.new("TextButton",swRow)
-        swBtn.Size = UDim2.new(1,0,0,38); swBtn.Position = UDim2.new(0,0,0,0)
-        swBtn.BackgroundTransparency = 1; swBtn.Text = ""; swBtn.ZIndex = 15
-        swBtn.MouseButton1Click:Connect(function()
-            swState = not swState; swRp()
-            if swState then startSpeedWalk(); notify("Speed Walk","Активирован  🏃",themeColor)
-            else stopSpeedWalk(); notify("Speed Walk","Отключён",TXTD) end
-        end)
-        local swDv = Instance.new("Frame",swRow)
-        swDv.Size = UDim2.new(1,0,0,1); swDv.Position = UDim2.new(0,0,1,-1)
-        swDv.BackgroundColor3 = BDR; swDv.BorderSizePixel = 0; swDv.ZIndex = 13
-    end
-
-    -- High Jump
-    mkTgl(MOV, "High Jump", "мощный прыжок через BodyVelocity", false, function(v)
-        if v then startHighJump(); notify("High Jump","Активирован  🚀",themeColor)
-        else stopHighJump(); notify("High Jump","Отключён",TXTD) end
-    end, 11)
-    mkSlider(MOV, "High Jump сила", 20, 200, 80, "%d", function(v) highJumpPow = v end, 12)
-end
-
--- ══════════════════════════════════════════════════════════════════
---  ДОБАВЛЯЕМ В COM: Spin + Fake Lag
--- ══════════════════════════════════════════════════════════════════
-do
-    local COM = tabPages.COM
-    secLbl(COM, "misc", 11)
-
-    mkTgl(COM, "Spin", "крутит персонажа", false, function(v)
-        if v then startSpin(); notify("Spin","Активирован  🌀",themeColor)
-        else stopSpin(); notify("Spin","Отключён",TXTD) end
-    end, 12)
-    mkSlider(COM, "Скорость вращения", 1, 20, 8, "%d rps", function(v)
-        spinSpeed = v
-        if spinBG and spinBG.Parent then
-            spinBG.AngularVelocity = Vector3.new(0, v * math.pi * 2, 0)
-        end
-    end, 13)
-
-    mkTgl(COM, "Fake Lag", "имитация лага (bypass)", false, function(v)
-        if v then startFakeLag(); notify("Fake Lag","Активирован  📡",themeColor)
-        else stopFakeLag(); notify("Fake Lag","Отключён",TXTD) end
-    end, 14)
-    mkSlider(COM, "Задержка (мс)", 50, 500, 100, "%dms", function(v) fakeLagMs = v end, 15)
-
-    -- Strafe в COM
-    secLbl(COM,"strafe",16)
-    mkTgl(COM,"Strafe","авто-буст каждые N студов хода",false,function(v)
-        if v then startStrafe();notify("Strafe","Активирован  ⚡",themeColor)
-        else stopStrafe();notify("Strafe","Отключён",TXTD) end
-    end,17)
-    mkSlider(COM,"Дистанция до буста",2,20,5,"%d st",function(v) strafeDist=v end,18)
-    mkSlider(COM,"Сила буста",20,120,55,"%d",function(v) strafePower=v end,19)
-end
-
--- Добавляем в onDied остановку всех функций
-Hum.Died:Connect(function()
-    stopSpeedWalk(); stopHighJump(); stopFakeLag(); stopSpin(); stopStrafe()
-end)
-LP.CharacterAdded:Connect(function(nc2)
-    task.wait(0.5)
-    if speedWalkOn then startSpeedWalk() end
-    if highJumpOn  then startHighJump()  end
-    if strafeOn    then startStrafe()    end
-end)
-
--- ── СТАРТ ──────────────────────────────────────────────────────────
-task.delay(2.4,function() notify("xclient","Загружен  v8.2  ✓",themeColor) end)
-print("[xclient v8.2] OK | "..tostring(1902).."+ lines | Strafe + DropdownGUI + GUI Switcher")
+-- ══ СТАРТ ═════════════════════════════════════════════════════════
+task.delay(2.4,function() notify("xclient","Загружен  v9.0  ✓",TC) end)
+print("[xclient v9.0] CLEAN BUILD — всё работает")
