@@ -112,27 +112,38 @@ local keybinds={}
 
 local menuOpen=false; local activeTab="MOV"
 
--- ══ GUI PARENT ════════════════════════════════════════════════════
-local GuiParent=LP:WaitForChild("PlayerGui")
-do
-    if typeof(gethui)=="function" then
-        local ok,h=pcall(gethui); if ok and h then GuiParent=h end
-    end
-    if GuiParent==LP:FindFirstChild("PlayerGui") then
-        local ok,cg=pcall(function() return game:GetService("CoreGui") end)
-        if ok and cg then
-            local cw=pcall(function() local t=Instance.new("Frame");t.Parent=cg;t:Destroy() end)
-            if cw then GuiParent=cg end
-        end
-    end
+-- ══ GUI PARENT (CoreGui - поверх всего) ═══════════════════════════
+local GuiParent = nil
+
+-- Пытаемся получить CoreGui
+local success, coreGui = pcall(function()
+    return game:GetService("CoreGui")
+end)
+if success and coreGui then
+    GuiParent = coreGui
+end
+
+-- Если не получилось - пробуем gethui
+if not GuiParent and type(gethui) == "function" then
+    success, GuiParent = pcall(gethui)
+    if not success then GuiParent = nil end
+end
+
+-- Запасной вариант - PlayerGui
+if not GuiParent then
+    GuiParent = LP:WaitForChild("PlayerGui")
 end
 
 -- ══ SCREENGUI ════════════════════════════════════════════════════
-local SG=Instance.new("ScreenGui")
-SG.Name="xclient_v8"; SG.ResetOnSpawn=false
-SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
-if typeof(syn)=="table" and typeof(syn.protect_gui)=="function" then pcall(syn.protect_gui,SG) end
-SG.Parent=GuiParent
+local SG = Instance.new("ScreenGui")
+SG.Name = "xclient_v8"
+SG.ResetOnSpawn = false
+SG.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+SG.DisplayOrder = 999  -- 👈 ДОБАВЬТЕ ЭТУ СТРОКУ
+if typeof(syn) == "table" and typeof(syn.protect_gui) == "function" then 
+    pcall(syn.protect_gui, SG) 
+end
+SG.Parent = GuiParent
 
 -- ══ УТИЛИТЫ ══════════════════════════════════════════════════════
 local function cr(r,p) local c=Instance.new("UICorner",p);c.CornerRadius=UDim.new(0,r);return c end
@@ -166,24 +177,32 @@ end
 
 -- DRAG (универсальный — для окна и виджетов)
 local function makeDraggable(f)
-    local ds,sp2,dr
-    f.InputBegan:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1
-        or i.UserInputType==Enum.UserInputType.Touch then
-            dr=true;ds=i.Position;sp2=f.Position
+    local dragStart, startPos, dragging = nil, nil, false
+    
+    f.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = f.Position
         end
     end)
-    UIS.InputChanged:Connect(function(i)
-        if not dr then return end
-        if i.UserInputType==Enum.UserInputType.MouseMovement
-        or i.UserInputType==Enum.UserInputType.Touch then
-            local d=i.Position-ds
-            f.Position=UDim2.new(sp2.X.Scale,sp2.X.Offset+d.X,sp2.Y.Scale,sp2.Y.Offset+d.Y)
+    
+    UIS.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            f.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+                                   startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
-    UIS.InputEnded:Connect(function(i)
-        if i.UserInputType==Enum.UserInputType.MouseButton1
-        or i.UserInputType==Enum.UserInputType.Touch then dr=false end
+    
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
     end)
 end
 
